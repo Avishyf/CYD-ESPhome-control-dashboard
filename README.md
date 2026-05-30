@@ -59,7 +59,7 @@ Includes custom Home Assistant automation blueprints featuring strict **reconnec
 1. Open your **ESPHome Dashboard** in Home Assistant or locally on your PC.
 2. Create a new device or edit your existing one, pasting the contents of [`esphome_cyd_lights.yaml`]
 3. Connect your Cheap Yellow Display board to your computer using a USB cable.
-4. install the bin file using [`https://web.esphome.io/`]
+4. install the bin file using [ESP_Home_Flasher](https://web.esphome.io/)
 5. *Important Boot Mode*: **hold down the BOOT button on the back of your CYD board and rst, then leave boot the leave RST** to make sure it flashable.
 
 if you wanted to recomile the bin, you can use the YANL file in order to do so with ESPhome.
