@@ -4,28 +4,27 @@
 [![Framework](https://img.shields.io/badge/Framework-ESPHome-green.svg)](https://esphome.io/)
 [![Platform](https://img.shields.io/badge/Integration-Home%20Assistant-blue.svg)](https://www.home-assistant.io/)
 
-<img src="https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/operational1.jpeg" width="40%"> 
+<p align="center">
+  <img src="operational1.jpeg" width="380" alt="CYD ESPHome Lights Controller Operational" />
+</p>
 
 A state-of-the-art, premium touch-based control panel for your Home Assistant lights and switches. This project runs natively on the **Cheap Yellow Display (CYD / `esp32-2432S028`)**, leveraging the advanced hardware features of the ESP32 and ESPHome's declarative LVGL graphics component.
 
-*based on hardware: 
-
-Espressif ESP32
-
-320x240 ILI9341 display
-
-XPT2046 Resistive Touch Panel
-
+### ⚙️ Hardware Specifications:
+* **Controller**: Espressif ESP32
+* **Display**: 320x240 ILI9341 display
+* **Touch Panel**: XPT2046 Resistive Touch Panel
+* **Ambient Light**: Onboard LDR (Light Dependent Resistor)
 
 ---
 
-## 📸 Dashboard Previews (generated with simulator, real world may differ)
+## 📸 Dashboard Previews (Simulated Views)
 
-![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/main_page.png)
-![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/light_control.png)
-![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/channel_configuration.png)
-![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/settings.png)
+To save space and keep your GitHub page clean, screenshots are resized to a crisp, uniform scale:
 
+| Home Screen Dashboard | Dimmer Sub-Page | Channel Configuration | Settings Menu |
+| :---: | :---: | :---: | :---: |
+| <img src="main_page.png" width="180" alt="Home Screen Dashboard" /> | <img src="/light_control.png" width="180" alt="Dimmer Sub-Page" /> | <img src="channel_configuration.png" width="180" alt="Channel Configuration" /> | <img src="settings.png" width="180" alt="Settings Menu" /> |
 
 ---
 
@@ -57,42 +56,64 @@ Includes custom Home Assistant automation blueprints featuring strict **reconnec
 
 ### Step 1: Flashing your CYD Controller
 1. Open your **ESPHome Dashboard** in Home Assistant or locally on your PC.
-2. Create a new device or edit your existing one, pasting the contents of [`esphome_cyd_lights.yaml`]
+2. Create a new device or edit your existing one, pasting the contents of [`esphome_cyd_lights.yaml`](esphome_cyd_lights.yaml).
 3. Connect your Cheap Yellow Display board to your computer using a USB cable.
-4. install the bin file using [ESP_Home_Flasher](https://web.esphome.io/)
-5. *Important Boot Mode*: **hold down the BOOT button on the back of your CYD board and rst, then leave boot the leave RST** to make sure it flashable.
+4. Install the bin file directly via your browser using [ESPHome Web Tools](https://web.esphome.io/).
+5. *Important Boot Mode*: **Hold down the BOOT button on the back of your CYD board, press and release the RST button, then release the BOOT button** to ensure it enters flashable bootloader mode.
 
-if you wanted to recomile the bin, you can use the YANL file in order to do so with ESPhome.
+*Note: If you want to customize or recompile the binary file, you can compile and flash directly from ESPHome using the YAML configuration.*
 
 ### Step 2: Setting up Bidirectional Automations in HA
-1. i've added two blueprints
+This repository includes two pre-configured synchronization blueprints:
 
-[`zero_bounce_light_sync_blueprint.yaml`] [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FAvishyf%2FCYD-ESPhome-control-dashboard%2Fblob%2Fmain%2Fzero_bounce_light_sync_blueprint.yaml) 
+1. **Light Synchronizer Blueprint**: [`zero_bounce_light_sync_blueprint.yaml`](zero_bounce_light_sync_blueprint.yaml)
+   [![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FAvishyf%2FCYD-ESPhome-control-dashboard%2Fblob%2Fmain%2Fzero_bounce_light_sync_blueprint.yaml)
+2. **Switch/Generic Device Blueprint**: [`zero_bounce_switch_sync_blueprint.yaml`](zero_bounce_switch_sync_blueprint.yaml)
+   [![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FAvishyf%2FCYD-ESPhome-control-dashboard%2Fblob%2Fmain%2Fzero_bounce_switch_sync_blueprint.yaml)
 
-[`zero_bounce_switch_sync_blueprint.yaml`] [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FAvishyf%2FCYD-ESPhome-control-dashboard%2Fblob%2Fmain%2Fzero_bounce_switch_sync_blueprint.yaml) 
+You can import them directly using the Home Assistant buttons above or copy them into your Home Assistant directory under `/config/blueprints/automation/`.
 
-you can add them yourself to Home Assistant directory under `/config/blueprints/automation/` or with the import links.
-
-2. Go to **Settings > Automations & Scenes > Blueprints** and reload or re-import the blueprints.
-3. Create a new automation from the blueprints:
+3. Go to **Settings > Automations & Scenes > Blueprints** and reload or re-import the blueprints.
+4. Create a new automation from the blueprints:
    * Select your CYD virtual light/switch entity (e.g. `light.cyd_l1`).
    * Select the target physical lamp or smart switch in your room.
-4. Save and enjoy a robust, bounce-free bidirectional synchronizer!
+5. Save and enjoy a robust, bounce-free bidirectional synchronizer!
 
 ---
-## Notes: 
-* when you add the device to home assistant you will see 4 channel of light and 4 channels of switch, each one of the 4 lights is linked to each channel of the switches, this is made to easy the sync between device and the control.
-* it also exposes the backlight of the scrren as an entity
-* to eneter the light color and brightness control page just long press the the channel for >1s
-* the names of the channel can be changed through HA friendly name, just change it in HA and it will be changed imidiatly in the CYD.
----
+
+## 📝 Operating Notes & UI Controls
+
+* **Auto-Symmetric Channel Layout**: When you add the device to Home Assistant, you will see 4 light channels and 4 switch channels. Each light channel is logically synchronized with its corresponding switch channel to allow easy setup.
+* **Backlight Control**: The display screen's backlight brightness is exposed directly to Home Assistant as an adjustable dimmer light entity.
+* **Quick Access Dimmer**: To enter the color temperature and brightness control sub-page for any light channel, simply **long-press the channel card for > 1 second**.
+* **Dynamic Friendly Names**: You can rename any channel card name directly within Home Assistant's configuration panel—the display screen will update its text cards in real-time without needing a reflash!
 
 ---
-## Bonus
-in case you want a nice stand like i have in the picture you can dowsload from [here](https://www.thingiverse.com/thing:7047135) this great enclosure (not made by me)
 
-there is .ino file containing the striped down version of the LVGL UI in case someone will want to uttilize it for a diffrent project
+## 🔌 Standalone Arduino IDE Version (No Home Assistant/ESPHome)
+
+If you wish to use this premium visual touch dashboard for other hardware control projects (e.g., standard MQTT, Bluetooth, local relays, standalone appliances), you can find a **fully decoupled, standalone C++/LVGL Arduino sketch** in the [`cyd_lights_arduino_ui`](cyd_lights_arduino_ui/) folder!
+
+### How to Compile & Upload Standalone UI:
+1. Install the **Arduino IDE** and make sure you have the **ESP32 board package** (v2.x or v3.x) installed.
+2. Install these core libraries via the Arduino Library Manager:
+   * **`lvgl`** (v8.x or v9.x)
+   * **`TFT_eSPI`** (configured for the Cheap Yellow Display `ESP32-2432S028` pinout)
+   * **`XPT2046_Touchscreen`** by Paul Stoffregen (standard resistive touch driver)
+3. Open [`cyd_lights_arduino_ui.ino`](cyd_lights_arduino_ui/cyd_lights_arduino_ui.ino) in Arduino IDE.
+4. Select board **ESP32 Dev Module** or standard ESP32 board options.
+5. Connect your Cheap Yellow Display via micro-USB, compile, and upload!
+
+*Note: The standalone version is fully compatible with both LVGL v8 and v9, and uses LVGL's highly optimized built-in Montserrat fonts and standard library glyph symbols, ensuring it compiles instantly out-of-the-box with zero custom asset dependencies.*
+
 ---
+
+## 🎁 Bonus Enclosure & Models
+
+* **3D Printable Stand/Case**: If you want the premium visual case shown in the operational photo, you can download a beautiful, custom 3D-printable case design for this Cheap Yellow Display board from the original creator on Thingiverse: [Thingiverse #7047135](https://www.thingiverse.com/thing:7047135).
+
+---
+
 ## 💡 Key Design Considerations for Forking
 
 * **Gamma Correction**: ESPHome applies a default `2.8` gamma correction. Because these CYD lights are virtual and target physical lights that already perform their own gamma corrections, `gamma_correct: 0` is set to ensure a true **1:1 linear scaling** of brightness.
