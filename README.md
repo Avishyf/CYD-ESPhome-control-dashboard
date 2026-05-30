@@ -19,7 +19,7 @@ XPT2046 Resistive Touch Panel
 
 ---
 
-## 📸 Dashboard Previews
+## 📸 Dashboard Previews (generated with simulator, real world may differ)
 
 ![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/main_page.png)
 ![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/light_control.png)
@@ -80,7 +80,12 @@ you can add them yourself to Home Assistant directory under `/config/blueprints/
 4. Save and enjoy a robust, bounce-free bidirectional synchronizer!
 
 ---
-
+## Notes: 
+* when you add the device to home assistant you will see 4 channel of light and 4 channels of switch, each one of the 4 lights is linked to each channel of the switches, this is made to easy the sync between device and the control.
+* it also exposes the backlight of the scrren as an entity
+* to eneter the light color and brightness control page just long press the the channel for >1s
+* the names of the channel can be changed through HA friendly name, just change it in HA and it will be changed imidiatly in the CYD.
+---
 ## 💡 Key Design Considerations for Forking
 
 * **Gamma Correction**: ESPHome applies a default `2.8` gamma correction. Because these CYD lights are virtual and target physical lights that already perform their own gamma corrections, `gamma_correct: 0` is set to ensure a true **1:1 linear scaling** of brightness.
