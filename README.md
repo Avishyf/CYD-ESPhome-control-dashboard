@@ -10,12 +10,10 @@ A state-of-the-art, premium touch-based control panel replica for your Home Assi
 
 ## 📸 Dashboard Previews
 
-  | Home Screen Dashboard |           | Dimmer Sub-Page | 
 ![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/main_page.png)
 ![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/light_control.png)
-
-  | settings menu |
 ![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/channel_configuration.png)
+![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/settings.png)
 
 
 ---
