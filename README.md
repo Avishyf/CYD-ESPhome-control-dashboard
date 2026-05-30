@@ -90,6 +90,8 @@ you can add them yourself to Home Assistant directory under `/config/blueprints/
 ---
 ## Bonus
 in case you want a nice stand like i have in the picture you can dowsload from [here](https://www.thingiverse.com/thing:7047135) this great enclosure (not made by me)
+
+there is .ino file containing the striped down version of the LVGL UI in case someone will want to uttilize it for a diffrent project
 ---
 ## 💡 Key Design Considerations for Forking
 
