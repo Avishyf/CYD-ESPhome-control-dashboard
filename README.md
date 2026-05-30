@@ -60,8 +60,17 @@ Includes custom Home Assistant automation blueprints featuring strict **reconnec
 4. install the bin file using [`https://web.esphome.io/`]
 5. *Important Boot Mode*: **hold down the BOOT button on the back of your CYD board and rst, then leave boot the leave RST** to make sure it flashable.
 
+if you wanted to recomile the bin, you can use the YANL file in order to do so with ESPhome.
+
 ### Step 2: Setting up Bidirectional Automations in HA
-1. Copy [`zero_bounce_light_sync_blueprint.yaml`] and [`zero_bounce_switch_sync_blueprint.yaml`] into your Home Assistant directory under `/config/blueprints/automation/`.
+1. i've added two blueprints
+
+[`zero_bounce_light_sync_blueprint.yaml`] [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FAvishyf%2FCYD-ESPhome-control-dashboard%2Fblob%2Fmain%2Fzero_bounce_light_sync_blueprint.yaml) 
+
+[`zero_bounce_switch_sync_blueprint.yaml`] [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FAvishyf%2FCYD-ESPhome-control-dashboard%2Fblob%2Fmain%2Fzero_bounce_switch_sync_blueprint.yaml) 
+
+you can add them yourself to Home Assistant directory under `/config/blueprints/automation/` or with the import links.
+
 2. Go to **Settings > Automations & Scenes > Blueprints** and reload or re-import the blueprints.
 3. Create a new automation from the blueprints:
    * Select your CYD virtual light/switch entity (e.g. `light.cyd_l1`).
