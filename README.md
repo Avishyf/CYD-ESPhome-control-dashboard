@@ -92,7 +92,7 @@ You can import them directly using the Home Assistant buttons above or copy them
 
 ## 🔌 Standalone Arduino IDE Version (No Home Assistant/ESPHome)
 
-If you wish to use this premium visual touch dashboard for other hardware control projects (e.g., standard MQTT, Bluetooth, local relays, standalone appliances), you can find a **fully decoupled, standalone C++/LVGL Arduino sketch** in the [`cyd_lights_arduino_ui`](cyd_lights_arduino_ui/) folder!
+If you wish to use this premium visual touch dashboard for other hardware control projects (e.g., standard MQTT, Bluetooth, local relays, standalone appliances), you can find the **fully decoupled, standalone C++/LVGL Arduino sketch**
 
 ### How to Compile & Upload Standalone UI:
 1. Install the **Arduino IDE** and make sure you have the **ESP32 board package** (v2.x or v3.x) installed.
@@ -100,7 +100,7 @@ If you wish to use this premium visual touch dashboard for other hardware contro
    * **`lvgl`** (v8.x or v9.x)
    * **`TFT_eSPI`** (configured for the Cheap Yellow Display `ESP32-2432S028` pinout)
    * **`XPT2046_Touchscreen`** by Paul Stoffregen (standard resistive touch driver)
-3. Open [`cyd_lights_arduino_ui.ino`](cyd_lights_arduino_ui/cyd_lights_arduino_ui.ino) in Arduino IDE.
+3. Open [`cyd_lights_arduino_ui.ino`](CYD_LVGL_UIi.ino) in Arduino IDE.
 4. Select board **ESP32 Dev Module** or standard ESP32 board options.
 5. Connect your Cheap Yellow Display via micro-USB, compile, and upload!
 
