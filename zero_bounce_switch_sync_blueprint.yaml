@@ -1,0 +1,90 @@
+blueprint:
+  name: Bidirectional Switch Sync with Zero-Bounce
+  description: >
+    Syncs state bidirectionally between Switch A (e.g. CYD switch) and Switch B (physical switch)
+    with a 1-second transition lockout and reconnection guards to prevent unwanted shutdowns.
+  domain: automation
+  input:
+    switch_a:
+      name: Switch A
+      description: The first switch (e.g. your CYD virtual switch entity).
+      selector:
+        entity:
+          domain: switch
+    switch_b:
+      name: Switch B
+      description: The second switch (e.g. your physical wall switch/lamp).
+      selector:
+        entity:
+          domain: switch
+
+mode: single
+max_exceeded: silent
+
+variables:
+  switch_a: !input switch_a
+  switch_b: !input switch_b
+
+trigger:
+  - platform: state
+    entity_id: !input switch_a
+    id: a_changed
+  - platform: state
+    entity_id: !input switch_b
+    id: b_changed
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ trigger.from_state is not none and trigger.to_state is not none and
+      trigger.to_state.state not in ['unavailable', 'unknown'] and
+      trigger.from_state.state != trigger.to_state.state }}
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: a_changed
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ trigger.from_state.state in ['unavailable', 'unknown'] }}"
+            then:
+              # Switch A reconnected. Sync Switch A to match Switch B.
+              - if:
+                  - condition: template
+                    value_template: "{{ states(switch_b) in ['on', 'off'] }}"
+                then:
+                  - action: "switch.turn_{{ states(switch_b) }}"
+                    target:
+                      entity_id: !input switch_a
+            else:
+              # Normal transition. Sync Switch B to match Switch A.
+              - action: "switch.turn_{{ trigger.to_state.state }}"
+                target:
+                  entity_id: !input switch_b
+          # Lock execution for 1 second to discard transition feedback loops
+          - delay: "00:00:01"
+      - conditions:
+          - condition: trigger
+            id: b_changed
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ trigger.from_state.state in ['unavailable', 'unknown'] }}"
+            then:
+              # Switch B reconnected. Sync Switch B to match Switch A.
+              - if:
+                  - condition: template
+                    value_template: "{{ states(switch_a) in ['on', 'off'] }}"
+                then:
+                  - action: "switch.turn_{{ states(switch_a) }}"
+                    target:
+                      entity_id: !input switch_b
+            else:
+              # Normal transition. Sync Switch A to match Switch B.
+              - action: "switch.turn_{{ trigger.to_state.state }}"
+                target:
+                  entity_id: !input switch_a
+          # Lock execution for 1 second to discard transition feedback loops
+          - delay: "00:00:01"
