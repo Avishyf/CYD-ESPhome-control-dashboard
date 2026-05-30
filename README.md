@@ -86,6 +86,11 @@ you can add them yourself to Home Assistant directory under `/config/blueprints/
 * to eneter the light color and brightness control page just long press the the channel for >1s
 * the names of the channel can be changed through HA friendly name, just change it in HA and it will be changed imidiatly in the CYD.
 ---
+
+---
+## Bonus
+in case you want a nice stand like i have in the picture you can dowsload from [here](https://www.thingiverse.com/thing:7047135) this great enclosure (not made by me)
+---
 ## 💡 Key Design Considerations for Forking
 
 * **Gamma Correction**: ESPHome applies a default `2.8` gamma correction. Because these CYD lights are virtual and target physical lights that already perform their own gamma corrections, `gamma_correct: 0` is set to ensure a true **1:1 linear scaling** of brightness.
