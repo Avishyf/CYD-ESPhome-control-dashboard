@@ -10,11 +10,11 @@ A state-of-the-art, premium touch-based control panel replica for your Home Assi
 
 ## 📸 Dashboard Previews
 
-*Here you can drop the pixel-perfect digital screenshots you captured from the VS Code C++ Simulator to showcase your gorgeous dashboard:*
-
 | Home Screen Dashboard | Dimmer Sub-Page | settings menu |
-| ![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/light_control.png) | :---: | :---: |
-| *(Drop Home Screen screenshot here)* | *(Drop Dimmer page screenshot here)* | *(Drop Settings page screenshot here)* |
+![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/light_control.png)
+![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/channel_configuration.png) 
+![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/main_page.png)
+
 
 ---
 
