@@ -13,7 +13,7 @@ A state-of-the-art, premium touch-based control panel replica for your Home Assi
 *Here you can drop the pixel-perfect digital screenshots you captured from the VS Code C++ Simulator to showcase your gorgeous dashboard:*
 
 | Home Screen Dashboard | Dimmer Sub-Page | settings menu |
-| :---: | :---: | :---: |
+| ![](https://github.com/Avishyf/CYD-ESPhome-control-dashboard/blob/main/light_control.png) | :---: | :---: |
 | *(Drop Home Screen screenshot here)* | *(Drop Dimmer page screenshot here)* | *(Drop Settings page screenshot here)* |
 
 ---
@@ -42,40 +42,22 @@ Includes custom Home Assistant automation blueprints featuring strict **reconnec
 
 ---
 
-## 📁 Project Repository Structure
-
-*   [`esphome_cyd_lights.yaml`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/esphome_cyd_lights.yaml): The core ESPHome configuration containing the complete declarative LVGL GUI layout, style declarations, and C++ event handlers.
-*   [`zero_bounce_light_sync_blueprint.yaml`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/zero_bounce_light_sync_blueprint.yaml): Reconnection-guarded Home Assistant automation blueprint to synchronize dimmable lights.
-*   [`zero_bounce_switch_sync_blueprint.yaml`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/zero_bounce_switch_sync_blueprint.yaml): Reconnection-guarded Home Assistant automation blueprint to synchronize ON/OFF switches and non-light devices.
-*   [`arduino_backup/`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/arduino_backup/): Contains legacy Arduino C++ libraries and the consolidated single-file sketch `consolidated_sketch.ino` (for reference or Wokwi simulator paste).
-*   [`stl/`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/stl/): Contains 3D-printable casing STL models for the CYD board.
-
----
-
 ## 🛠️ Setup & Installation Guide
 
 ### Step 1: Flashing your CYD Controller
 1. Open your **ESPHome Dashboard** in Home Assistant or locally on your PC.
-2. Create a new device or edit your existing one, pasting the contents of [`esphome_cyd_lights.yaml`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/esphome_cyd_lights.yaml).
-3. Connect your Cheap Yellow Display board to your computer using a micro-USB cable.
-4. Click **Install / Run**.
-5. *Important Boot Mode*: When compiling finishes and displays `Connecting...`, **hold down the BOOT button on the back of your CYD board** until the upload progress percentage starts!
+2. Create a new device or edit your existing one, pasting the contents of [`esphome_cyd_lights.yaml`]
+3. Connect your Cheap Yellow Display board to your computer using a USB cable.
+4. install the bin file using [`https://web.esphome.io/`]
+5. *Important Boot Mode*: **hold down the BOOT button on the back of your CYD board and rst, then leave boot the leave RST** to make sure it flashable.
 
 ### Step 2: Setting up Bidirectional Automations in HA
-1. Copy [`zero_bounce_light_sync_blueprint.yaml`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/zero_bounce_light_sync_blueprint.yaml) and [`zero_bounce_switch_sync_blueprint.yaml`](file:///C:/Users/Ronen/OneDrive/Desktop/Lights_menu/zero_bounce_switch_sync_blueprint.yaml) into your Home Assistant directory under `/config/blueprints/automation/`.
+1. Copy [`zero_bounce_light_sync_blueprint.yaml`] and [`zero_bounce_switch_sync_blueprint.yaml`] into your Home Assistant directory under `/config/blueprints/automation/`.
 2. Go to **Settings > Automations & Scenes > Blueprints** and reload or re-import the blueprints.
 3. Create a new automation from the blueprints:
    * Select your CYD virtual light/switch entity (e.g. `light.cyd_l1`).
    * Select the target physical lamp or smart switch in your room.
 4. Save and enjoy a robust, bounce-free bidirectional synchronizer!
-
----
-
-## 🖥️ PC Simulator Preview (Visual Prototyping)
-To modify or customize this UI without constant flashing:
-1. Open the simulator project folder `C:\Users\Ronen\vcpkg\lv_port_pc_vscode\` in **VS Code**.
-2. Press **`F5`** or click **Start Debugging** via CMake Tools.
-3. An interactive `320x240` window will launch immediately, showing the exact dashboard twin. Drag sliders, double-click cards, customize logos, and see your layouts update instantly!
 
 ---
 
