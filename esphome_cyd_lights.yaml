@@ -25,13 +25,22 @@ esphome:
           // Initialize default light values on very first boot (no prior info)
           if (!id(defaults_warm_initialized)) {
             id(defaults_warm_initialized) = true;
-            for (auto* lt : {id(cyd_l1), id(cyd_l2), id(cyd_l3), id(cyd_l4)}) {
-              auto call = lt->make_call();
-              call.set_color_temperature(500.0f); // Warmest possible color temp (500 mireds)
-              call.set_brightness(1.0f);          // Default full brightness
-              call.set_state(false);              // Keep it OFF
-              call.perform();
-            }
+            id(l1_saved_brightness) = 1.0f; id(l1_saved_color_temp) = 500.0f;
+            id(l2_saved_brightness) = 1.0f; id(l2_saved_color_temp) = 500.0f;
+            id(l3_saved_brightness) = 1.0f; id(l3_saved_color_temp) = 500.0f;
+            id(l4_saved_brightness) = 1.0f; id(l4_saved_color_temp) = 500.0f;
+          }
+
+          // Restore saved brightness and color temperature for each channel on boot
+          float saved_b[] = { id(l1_saved_brightness), id(l2_saved_brightness), id(l3_saved_brightness), id(l4_saved_brightness) };
+          float saved_ct[] = { id(l1_saved_color_temp), id(l2_saved_color_temp), id(l3_saved_color_temp), id(l4_saved_color_temp) };
+          light::LightState* lights[] = { id(cyd_l1), id(cyd_l2), id(cyd_l3), id(cyd_l4) };
+          for (int i = 0; i < 4; i++) {
+            auto call = lights[i]->make_call();
+            call.set_brightness(saved_b[i]);
+            call.set_color_temperature(saved_ct[i]);
+            call.set_state(lights[i]->remote_values.is_on()); // Keep its current power state
+            call.perform();
           }
 
           // Force initial rendering of all channel logos based on saved globals
@@ -61,13 +70,11 @@ esp32:
 
 # WiFi Configuration
 wifi:
-  ssid: "Avishai_Shira1"
-  password: "0503663222"
   power_save_mode: LIGHT
   
   # Enable captive portal for offline configuration
   ap:
-    ssid: "CYD-Lights-AP"
+    ssid: "CYD-Remote-AP"
     password: "password123"
 
 captive_portal:
@@ -378,6 +385,40 @@ globals:
     initial_value: '60'
     restore_value: yes
 
+  # Explicit Non-Volatile Memory for Brightness and Color Temperature
+  - id: l1_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l1_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+  - id: l2_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l2_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+  - id: l3_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l3_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+  - id: l4_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l4_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+
 # Dimmable & Color Status Lights
 light:
   # Physical Screen Backlight
@@ -407,6 +448,7 @@ light:
     cold_white_color_temperature: 153 mireds
     warm_white_color_temperature: 500 mireds
     default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
     on_state:
       - if:
           condition:
@@ -447,6 +489,8 @@ light:
       - lambda: |-
           auto light = id(cyd_l1);
           if (light->remote_values.is_on()) {
+            id(l1_saved_brightness) = light->remote_values.get_brightness();
+            id(l1_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l1), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
             lv_obj_set_style_bg_color(id(btn_l1), lv_color_hex(0x2E3238), LV_PART_MAIN);
@@ -527,6 +571,7 @@ light:
     cold_white_color_temperature: 153 mireds
     warm_white_color_temperature: 500 mireds
     default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
     on_state:
       - if:
           condition:
@@ -567,6 +612,8 @@ light:
       - lambda: |-
           auto light = id(cyd_l2);
           if (light->remote_values.is_on()) {
+            id(l2_saved_brightness) = light->remote_values.get_brightness();
+            id(l2_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l2), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
             lv_obj_set_style_bg_color(id(btn_l2), lv_color_hex(0x2E3238), LV_PART_MAIN);
@@ -647,6 +694,7 @@ light:
     cold_white_color_temperature: 153 mireds
     warm_white_color_temperature: 500 mireds
     default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
     on_state:
       - if:
           condition:
@@ -687,6 +735,8 @@ light:
       - lambda: |-
           auto light = id(cyd_l3);
           if (light->remote_values.is_on()) {
+            id(l3_saved_brightness) = light->remote_values.get_brightness();
+            id(l3_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l3), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
             lv_obj_set_style_bg_color(id(btn_l3), lv_color_hex(0x2E3238), LV_PART_MAIN);
@@ -767,6 +817,7 @@ light:
     cold_white_color_temperature: 153 mireds
     warm_white_color_temperature: 500 mireds
     default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
     on_state:
       - if:
           condition:
@@ -807,6 +858,8 @@ light:
       - lambda: |-
           auto light = id(cyd_l4);
           if (light->remote_values.is_on()) {
+            id(l4_saved_brightness) = light->remote_values.get_brightness();
+            id(l4_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l4), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
             lv_obj_set_style_bg_color(id(btn_l4), lv_color_hex(0x2E3238), LV_PART_MAIN);
@@ -2216,9 +2269,9 @@ lvgl:
               - lambda: |-
                   esp_wifi_set_mode(WIFI_MODE_APSTA);
                   wifi_config_t ap_config = {};
-                  strcpy((char*)ap_config.ap.ssid, "CYD-Lights-AP");
+                  strcpy((char*)ap_config.ap.ssid, "CYD-Remote-AP");
                   strcpy((char*)ap_config.ap.password, "password123");
-                  ap_config.ap.ssid_len = strlen("CYD-Lights-AP");
+                  ap_config.ap.ssid_len = strlen("CYD-Remote-AP");
                   ap_config.ap.channel = 1;
                   ap_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
                   ap_config.ap.max_connection = 4;
@@ -2414,7 +2467,7 @@ lvgl:
 
         # Instructions Label
         - label:
-            text: "1. Connect your phone/PC to WiFi:\n   SSID: CYD-Lights-AP\n   Password: password123\n\n2. Open your web browser to:\n   http://192.168.4.1\n\n3. Select your network & connect!"
+            text: "1. Connect your phone/PC to WiFi:\n   SSID: CYD-Remote-AP\n   Password: password123\n\n2. Open your web browser to:\n   http://192.168.4.1\n\n3. Select your network & connect!"
             x: 20
             y: 65
             styles:
