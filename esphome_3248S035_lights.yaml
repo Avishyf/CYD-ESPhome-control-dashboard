@@ -1,0 +1,2756 @@
+esphome:
+  name: cyd-3-5-lights-controller
+  friendly_name: CYD 3.5 Lights Controller
+  includes:
+    - <esp_wifi.h>
+  on_boot:
+    priority: -100.0
+    then:
+      - script.execute: apply_theme_script
+      - light.turn_on:
+          id: cyd_backlight
+          brightness: 0.8
+      - lvgl.label.update:
+          id: l1_name_label
+          text: !lambda 'return id(cyd_l1)->get_name();'
+      - lvgl.label.update:
+          id: l2_name_label
+          text: !lambda 'return id(cyd_l2)->get_name();'
+      - lvgl.label.update:
+          id: l3_name_label
+          text: !lambda 'return id(cyd_l3)->get_name();'
+      - lvgl.label.update:
+          id: l4_name_label
+          text: !lambda 'return id(cyd_l4)->get_name();'
+      - lambda: |-
+          // Initialize default light values on very first boot (no prior info)
+          if (!id(defaults_warm_initialized)) {
+            id(defaults_warm_initialized) = true;
+            id(l1_saved_brightness) = 1.0f; id(l1_saved_color_temp) = 500.0f;
+            id(l2_saved_brightness) = 1.0f; id(l2_saved_color_temp) = 500.0f;
+            id(l3_saved_brightness) = 1.0f; id(l3_saved_color_temp) = 500.0f;
+            id(l4_saved_brightness) = 1.0f; id(l4_saved_color_temp) = 500.0f;
+          }
+
+          // Restore saved brightness and color temperature for each channel on boot
+          float saved_b[] = { id(l1_saved_brightness), id(l2_saved_brightness), id(l3_saved_brightness), id(l4_saved_brightness) };
+          float saved_ct[] = { id(l1_saved_color_temp), id(l2_saved_color_temp), id(l3_saved_color_temp), id(l4_saved_color_temp) };
+          light::LightState* lights[] = { id(cyd_l1), id(cyd_l2), id(cyd_l3), id(cyd_l4) };
+          for (int i = 0; i < 4; i++) {
+            auto call = lights[i]->make_call();
+            call.set_brightness(saved_b[i]);
+            call.set_color_temperature(saved_ct[i]);
+            call.set_state(lights[i]->remote_values.is_on()); // Keep its current power state
+            call.perform();
+          }
+
+          // Force initial rendering of all channel logos based on saved globals
+          const char* glyphs[] = {
+            "\U000F0769", "\U000F179B", "\U000F1798", "\U000F1054",
+            "\U000F0425", "\U000F0210", "\U000F001B", "\U000F02E3"
+          };
+          auto set_logo = [&](int logo_idx, lv_obj_t* label) {
+            if (logo_idx >= 1 && logo_idx <= 8) {
+              lv_label_set_text(label, glyphs[logo_idx - 1]);
+              lv_obj_set_style_text_color(label, lv_color_hex(0x64748B), LV_PART_MAIN);
+            }
+          };
+          set_logo(id(l1_logo), id(l1_logo_label));
+          set_logo(id(l2_logo), id(l2_logo_label));
+          set_logo(id(l3_logo), id(l3_logo_label));
+          set_logo(id(l4_logo), id(l4_logo_label));
+
+script:
+  - id: apply_theme_script
+    then:
+      - lambda: |-
+          bool dark = id(dark_mode);
+          uint32_t bg_color = dark ? 0x1A1D20 : 0xF1F5F9;      // Dark bg vs Slate 100
+          uint32_t card_color = dark ? 0x2E3238 : 0xE2E8F0;    // Slate 800 vs Slate 200 (Bright Grey)
+          uint32_t border_color = dark ? 0x3E444D : 0xCBD5E1;  // Slate 700 vs Slate 300
+          
+          uint32_t text_white = dark ? 0xFFFFFF : 0x000000;    // White vs Black
+          uint32_t text_grey = dark ? 0xCBD5E1 : 0x334155;     // Slate 300 vs Slate 700
+          uint32_t text_small = dark ? 0x94A3B8 : 0x475569;    // Slate 400 vs Slate 600
+
+          // Apply to pages
+          if (id(main_page) != nullptr) lv_obj_set_style_bg_color(id(main_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(channel_page) != nullptr) lv_obj_set_style_bg_color(id(channel_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(switch_page) != nullptr) lv_obj_set_style_bg_color(id(switch_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(settings_page) != nullptr) lv_obj_set_style_bg_color(id(settings_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(config_page) != nullptr) lv_obj_set_style_bg_color(id(config_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(wifi_hotspot_page) != nullptr) lv_obj_set_style_bg_color(id(wifi_hotspot_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+
+          // Apply to static buttons
+          lv_obj_t* btns[] = {
+            id(btn_settings_back), id(btn_wifi_setup),
+            id(btn_back), id(btn_config_dimmer), id(btn_switch_back), id(btn_config_switch),
+            id(btn_config_back), id(btn_hotspot_back),
+            id(btn_settings),
+            id(btn_mode_dimmer), id(btn_mode_switch),
+            id(btn_logo_1), id(btn_logo_2), id(btn_logo_3), id(btn_logo_4),
+            id(btn_logo_5), id(btn_logo_6), id(btn_logo_7), id(btn_logo_8)
+          };
+          for (auto* btn : btns) {
+            if (btn != nullptr) {
+              lv_obj_set_style_bg_color(btn, lv_color_hex(card_color), LV_PART_MAIN);
+              lv_obj_set_style_border_color(btn, lv_color_hex(border_color), LV_PART_MAIN);
+              lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+            }
+          }
+
+          // Apply to card buttons (default states)
+          lv_obj_t* cards[] = { id(btn_l1), id(btn_l2), id(btn_l3), id(btn_l4) };
+          for (auto* card : cards) {
+            if (card != nullptr) {
+              lv_obj_set_style_bg_color(card, lv_color_hex(card_color), LV_PART_MAIN);
+              lv_obj_set_style_border_color(card, lv_color_hex(border_color), LV_PART_MAIN);
+              lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+            }
+          }
+
+          // Helper to style child labels of buttons
+          auto set_button_label_colors = [](lv_obj_t* parent, uint32_t color) {
+            if (parent == nullptr) return;
+            uint32_t child_cnt = lv_obj_get_child_cnt(parent);
+            for (uint32_t i = 0; i < child_cnt; i++) {
+              lv_obj_t* child = lv_obj_get_child(parent, i);
+              if (child != nullptr && lv_obj_check_type(child, &lv_label_class)) {
+                lv_obj_set_style_text_color(child, lv_color_hex(color), LV_PART_MAIN);
+              }
+            }
+          };
+
+          // Apply button text colors
+          lv_obj_t* text_btns[] = {
+            id(btn_settings_back), id(btn_wifi_setup),
+            id(btn_back), id(btn_config_dimmer), id(btn_switch_back), id(btn_config_switch),
+            id(btn_config_back), id(btn_hotspot_back),
+            id(btn_mode_dimmer), id(btn_mode_switch)
+          };
+          for (auto* btn : text_btns) {
+            set_button_label_colors(btn, text_small);
+          }
+
+          // Apply to white text labels
+          lv_obj_t* white_labels[] = {
+            id(l1_name_label), id(l2_name_label), id(l3_name_label), id(l4_name_label),
+            id(channel_title), id(switch_title), id(config_title), id(settings_title), id(wifi_hotspot_title)
+          };
+          for (auto* lbl : white_labels) {
+            if (lbl != nullptr) {
+              lv_obj_set_style_text_color(lbl, lv_color_hex(text_white), LV_PART_MAIN);
+            }
+          }
+
+          // Apply to grey text labels
+          lv_obj_t* grey_labels[] = {
+            id(settings_ssid_label), id(settings_ip_label), id(settings_wifi_signal_label), id(settings_theme_label),
+            id(brightness_label), id(tone_label), id(backlight_label), id(timeout_label),
+            id(config_mode_label), id(config_logo_label), id(switch_toggle_label), id(hotspot_instructions_label)
+          };
+          for (auto* lbl : grey_labels) {
+            if (lbl != nullptr) {
+              lv_obj_set_style_text_color(lbl, lv_color_hex(text_grey), LV_PART_MAIN);
+            }
+          }
+
+          // Apply to small / card status labels
+          lv_obj_t* small_labels[] = {
+            id(l1_status_label), id(l2_status_label), id(l3_status_label), id(l4_status_label)
+          };
+          for (auto* lbl : small_labels) {
+            if (lbl != nullptr) {
+              lv_obj_set_style_text_color(lbl, lv_color_hex(text_small), LV_PART_MAIN);
+            }
+          }
+
+          // Theme Toggle - animate thumb slide
+          if (id(btn_theme_toggle_vertical) != nullptr) {
+            uint32_t track_bg     = dark ? 0x2A2D32 : 0x1E88E5;
+            uint32_t track_border = dark ? 0x3E444D : 0x1565C0;
+            lv_obj_set_style_bg_color(id(btn_theme_toggle_vertical), lv_color_hex(track_bg), LV_PART_MAIN);
+            lv_obj_set_style_border_color(id(btn_theme_toggle_vertical), lv_color_hex(track_border), LV_PART_MAIN);
+          }
+
+          if (id(theme_toggle_thumb) != nullptr) {
+            uint32_t thumb_bg = dark ? 0x4A5060 : 0xFFFFFF;
+            lv_obj_set_style_bg_color(id(theme_toggle_thumb), lv_color_hex(thumb_bg), LV_PART_MAIN);
+
+            // Smooth slide animation
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, id(theme_toggle_thumb));
+            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t) lv_obj_set_x);
+            lv_anim_set_values(&a, lv_obj_get_x(id(theme_toggle_thumb)), dark ? 42 : 4);
+            lv_anim_set_time(&a, 250);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+            lv_anim_start(&a);
+          }
+
+          if (id(theme_toggle_icon) != nullptr) {
+            lv_label_set_text(id(theme_toggle_icon), dark ? "\U000F0594" : "\U000F05A8");
+            lv_obj_set_style_text_color(id(theme_toggle_icon), lv_color_hex(dark ? 0xB0BAC6 : 0xFFEB3B), LV_PART_MAIN);
+          }
+
+# Configure robust preference saving to flash within 10s of any changes
+preferences:
+  flash_write_interval: 10s
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# WiFi Configuration
+wifi:
+  power_save_mode: LIGHT
+  
+  # Enable captive portal for offline configuration
+  ap:
+    ssid: "CYD-3.5-Remote-AP"
+    password: "password123"
+
+captive_portal:
+  id: cyd_captive_portal
+
+# Native Home Assistant API for flawless integration
+api:
+
+# OTA Updates
+ota:
+  - platform: esphome
+
+# Detailed Logging
+logger:
+
+# Sync timezone for the local clock display
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Asia/Jerusalem"
+
+# Reusable Fonts
+font:
+  - file: "gfonts://Outfit"
+    id: font_title
+    size: 28
+  - file: "gfonts://Outfit"
+    id: font_normal
+    size: 18
+  - file: "gfonts://Outfit"
+    id: font_small
+    size: 14
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
+    id: font_icon
+    size: 28
+    glyphs:
+      - "\U000F0769" # ceiling-light
+      - "\U000F179B" # light-recessed
+      - "\U000F1798" # ceiling-fan-light
+      - "\U000F1054" # outdoor-lamp
+      - "\U000F0425" # power
+      - "\U000F0210" # fan
+      - "\U000F001B" # air-conditioner
+      - "\U000F02E3" # bed
+      - "\U000F05A8" # weather-sunny (Sun)
+      - "\U000F0594" # weather-night (Moon)
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
+    id: font_icon_large
+    size: 75
+    glyphs:
+      - "\U000F0769" # ceiling-light
+      - "\U000F179B" # light-recessed
+      - "\U000F1798" # ceiling-fan-light
+      - "\U000F1054" # outdoor-lamp
+      - "\U000F0425" # power
+      - "\U000F0210" # fan
+      - "\U000F001B" # air-conditioner
+      - "\U000F02E3" # bed
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
+    id: font_icon_toggle
+    size: 20
+    glyphs:
+      - "\U000F05A8" # weather-sunny (Sun)
+      - "\U000F0594" # weather-night (Moon)
+
+# SPI Bus for Display (VSPI)
+spi:
+  - id: spi_display
+    clk_pin: GPIO14
+    mosi_pin: GPIO13
+    miso_pin: GPIO12
+
+# I2C Bus for Capacitive Touchscreen (GT911)
+i2c:
+  sda: GPIO33
+  scl: GPIO32
+  scan: true
+
+# 3.5" TFT Display (ST7796)
+display:
+  - platform: ili9xxx
+    id: cyd_display
+    model: ST7796
+    spi_id: spi_display
+    cs_pin: GPIO15
+    dc_pin: GPIO2
+    auto_clear_enabled: false
+    invert_colors: false
+    color_order: bgr
+    rotation: 90 # Set to 90 or 270 for landscape (depends on physical mounting)
+    dimensions:
+      width: 320
+      height: 480
+    update_interval: never
+
+# Touchscreen Controller (GT911)
+touchscreen:
+  - platform: gt911
+    id: cyd_touchscreen
+    display: cyd_display
+    address: 0x5D
+    # interrupt_pin: GPIO21 # Commented out to use Polling Mode (bypasses missing R25 board resistor)
+    # reset_pin: GPIO25
+    update_interval: 50ms
+    transform:
+      swap_xy: true
+      mirror_x: false
+      mirror_y: true
+    on_touch:
+      - if:
+          condition:
+            lambda: 'return !id(cyd_backlight)->remote_values.is_on();'
+          then:
+            - light.turn_on:
+                id: cyd_backlight
+                transition_length: 0s
+            - lvgl.resume:
+
+# Hardware Outputs
+output:
+  # Display Backlight PWM on GPIO27
+  - platform: ledc
+    pin: GPIO27
+    id: backlight_pwm
+
+  # Status RGB LED (inverted LEDC outputs)
+  - platform: ledc
+    pin: GPIO4
+    id: led_red
+    inverted: true
+  - platform: ledc
+    pin: GPIO16
+    id: led_green
+    inverted: true
+  - platform: ledc
+    pin: GPIO17
+    id: led_blue
+    inverted: true
+
+  # Virtual channels (Template Outputs)
+  - platform: template
+    id: l1_brightness_out
+    type: float
+    write_action: []
+  - platform: template
+    id: l1_color_temp_out
+    type: float
+    write_action: []
+
+  - platform: template
+    id: l2_brightness_out
+    type: float
+    write_action: []
+  - platform: template
+    id: l2_color_temp_out
+    type: float
+    write_action: []
+
+  - platform: template
+    id: l3_brightness_out
+    type: float
+    write_action: []
+  - platform: template
+    id: l3_color_temp_out
+    type: float
+    write_action: []
+
+  - platform: template
+    id: l4_brightness_out
+    type: float
+    write_action: []
+  - platform: template
+    id: l4_color_temp_out
+    type: float
+    write_action: []
+
+# WiFi Signal Sensor
+sensor:
+  - platform: wifi_signal
+    name: "CYD WiFi Signal"
+    id: cyd_wifi_signal
+    update_interval: 10s
+
+# WiFi SSID and IP Address text sensors
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "CYD IP Address"
+      id: cyd_ip_address
+    ssid:
+      name: "CYD Connected SSID"
+      id: cyd_ssid
+
+  # Import entity names from Home Assistant
+  - platform: homeassistant
+    id: ha_name_l1
+    entity_id: light.cyd_3_5_lights_controller_cyd_l1
+    attribute: friendly_name
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: l1_name_label
+            text: !lambda |-
+              if (x.empty()) return id(cyd_l1)->get_name();
+              return x;
+  - platform: homeassistant
+    id: ha_name_l2
+    entity_id: light.cyd_3_5_lights_controller_cyd_l2
+    attribute: friendly_name
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: l2_name_label
+            text: !lambda |-
+              if (x.empty()) return id(cyd_l2)->get_name();
+              return x;
+  - platform: homeassistant
+    id: ha_name_l3
+    entity_id: light.cyd_3_5_lights_controller_cyd_l3
+    attribute: friendly_name
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: l3_name_label
+            text: !lambda |-
+              if (x.empty()) return id(cyd_l3)->get_name();
+              return x;
+  - platform: homeassistant
+    id: ha_name_l4
+    entity_id: light.cyd_3_5_lights_controller_cyd_l4
+    attribute: friendly_name
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: l4_name_label
+            text: !lambda |-
+              if (x.empty()) return id(cyd_l4)->get_name();
+              return x;
+
+# Active Channel Trackers
+globals:
+  - id: dark_mode
+    type: bool
+    initial_value: 'true'
+    restore_value: yes
+  - id: active_channel
+    type: int
+    initial_value: '1'
+    restore_value: no
+  - id: l1_long_pressed
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+  - id: l2_long_pressed
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+  - id: l3_long_pressed
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+  - id: l4_long_pressed
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+
+  # Runtime Configurable Modes: 1 = Dimmer (Sliders), 2 = Switch (Toggle)
+  - id: l1_type
+    type: int
+    initial_value: '1'
+    restore_value: yes
+  - id: l2_type
+    type: int
+    initial_value: '1'
+    restore_value: yes
+  - id: l3_type
+    type: int
+    initial_value: '1'
+    restore_value: yes
+  - id: l4_type
+    type: int
+    initial_value: '1'
+    restore_value: yes
+
+  # Runtime Configurable Logos
+  - id: l1_logo
+    type: int
+    initial_value: '1'
+    restore_value: yes
+  - id: l2_logo
+    type: int
+    initial_value: '1'
+    restore_value: yes
+  - id: l3_logo
+    type: int
+    initial_value: '1'
+    restore_value: yes
+  - id: l4_logo
+    type: int
+    initial_value: '1'
+    restore_value: yes
+
+  - id: config_channel
+    type: int
+    initial_value: '1'
+    restore_value: no
+  - id: defaults_warm_initialized
+    type: bool
+    initial_value: 'false'
+    restore_value: yes
+  - id: screen_timeout_s
+    type: int
+    initial_value: '60'
+    restore_value: yes
+
+  # Explicit Non-Volatile Memory for Brightness and Color Temperature
+  - id: l1_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l1_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+  - id: l2_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l2_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+  - id: l3_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l3_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+  - id: l4_saved_brightness
+    type: float
+    initial_value: '1.0'
+    restore_value: yes
+  - id: l4_saved_color_temp
+    type: float
+    initial_value: '500.0'
+    restore_value: yes
+
+# Dimmable & Color Status Lights
+light:
+  # Physical Screen Backlight
+  - platform: monochromatic
+    output: backlight_pwm
+    name: "CYD Display Backlight"
+    id: cyd_backlight
+    restore_mode: ALWAYS_ON
+    default_transition_length: 0s
+
+  # Status RGB LED on the back
+  - platform: rgb
+    name: "CYD Status LED"
+    id: status_led
+    red: led_red
+    green: led_green
+    blue: led_blue
+    default_transition_length: 0s
+
+  # Channel 1 Light
+  - platform: color_temperature
+    name: "CYD L1"
+    id: cyd_l1
+    gamma_correct: 0
+    color_temperature: l1_color_temp_out
+    brightness: l1_brightness_out
+    cold_white_color_temperature: 153 mireds
+    warm_white_color_temperature: 500 mireds
+    default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_state:
+      - if:
+          condition:
+            lambda: 'return id(active_channel) == 1;'
+          then:
+            - lvgl.slider.update:
+                id: brightness_slider
+                value: !lambda |-
+                  auto light = id(cyd_l1);
+                  return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+            - lvgl.slider.update:
+                id: tone_slider
+                value: !lambda |-
+                  return id(cyd_l1)->remote_values.get_color_temperature();
+            - lambda: |-
+                float ct = id(cyd_l1)->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+      - lvgl.label.update:
+          id: l1_status_label
+          text: !lambda |-
+            auto light = id(cyd_l1);
+            if (light->remote_values.is_on()) {
+              return str_sprintf("ON (%d%%)", int(light->remote_values.get_brightness() * 100));
+            } else {
+              return std::string("OFF");
+            }
+      - lambda: |-
+          auto light = id(cyd_l1);
+          if (light->remote_values.is_on()) {
+            id(l1_saved_brightness) = light->remote_values.get_brightness();
+            id(l1_saved_color_temp) = light->remote_values.get_color_temperature();
+            lv_obj_set_style_bg_color(id(btn_l1), lv_color_hex(0x2C4022), LV_PART_MAIN);
+          } else {
+            lv_obj_set_style_bg_color(id(btn_l1), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+          }
+
+          // Dynamic Logo glyph and color update
+          int logo = id(l1_logo);
+          const char* glyph = "\U000F0769"; // default BULB
+          if (logo == 2) glyph = "\U000F179B"; // SPOT
+          else if (logo == 3) glyph = "\U000F1798"; // FAN+L
+          else if (logo == 4) glyph = "\U000F1054"; // LAMP
+          else if (logo == 5) glyph = "\U000F0425"; // POWER
+          else if (logo == 6) glyph = "\U000F0210"; // FAN
+          else if (logo == 7) glyph = "\U000F001B"; // A/C
+          else if (logo == 8) glyph = "\U000F02E3"; // BED
+
+          lv_label_set_text(id(l1_logo_label), glyph);
+
+          if (light->remote_values.is_on()) {
+            if (id(l1_type) == 1) {
+              float ct = light->remote_values.get_color_temperature();
+              float pct = (ct - 153.0f) / (500.0f - 153.0f);
+              pct = std::max(0.0f, std::min(1.0f, pct));
+              int r, g, b;
+              if (pct <= 0.5f) {
+                float p = pct * 2.0f;
+                r = int(p * 255); g = 255; b = 255;
+              } else {
+                float p = (pct - 0.5f) * 2.0f;
+                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+              }
+              uint32_t color = (b << 16) | (g << 8) | r;
+              lv_obj_set_style_text_color(id(l1_logo_label), lv_color_hex(color), LV_PART_MAIN);
+            } else {
+              lv_obj_set_style_text_color(id(l1_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
+            }
+          } else {
+            lv_obj_set_style_text_color(id(l1_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN); // Slate grey
+          }
+
+          // Sync the switch page toggle button and text when active
+          if (id(active_channel) == 1) {
+            lv_label_set_text(id(switch_page_logo_label), glyph);
+            if (light->remote_values.is_on()) {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+              if (id(l1_type) == 1) {
+                float ct = light->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              } else {
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+              }
+            } else {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+              lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+            }
+          }
+
+  # Channel 2 Light
+  - platform: color_temperature
+    name: "CYD L2"
+    id: cyd_l2
+    gamma_correct: 0
+    color_temperature: l2_color_temp_out
+    brightness: l2_brightness_out
+    cold_white_color_temperature: 153 mireds
+    warm_white_color_temperature: 500 mireds
+    default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_state:
+      - if:
+          condition:
+            lambda: 'return id(active_channel) == 2;'
+          then:
+            - lvgl.slider.update:
+                id: brightness_slider
+                value: !lambda |-
+                  auto light = id(cyd_l2);
+                  return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+            - lvgl.slider.update:
+                id: tone_slider
+                value: !lambda |-
+                  return id(cyd_l2)->remote_values.get_color_temperature();
+            - lambda: |-
+                float ct = id(cyd_l2)->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+      - lvgl.label.update:
+          id: l2_status_label
+          text: !lambda |-
+            auto light = id(cyd_l2);
+            if (light->remote_values.is_on()) {
+              return str_sprintf("ON (%d%%)", int(light->remote_values.get_brightness() * 100));
+            } else {
+              return std::string("OFF");
+            }
+      - lambda: |-
+          auto light = id(cyd_l2);
+          if (light->remote_values.is_on()) {
+            id(l2_saved_brightness) = light->remote_values.get_brightness();
+            id(l2_saved_color_temp) = light->remote_values.get_color_temperature();
+            lv_obj_set_style_bg_color(id(btn_l2), lv_color_hex(0x2C4022), LV_PART_MAIN);
+          } else {
+            lv_obj_set_style_bg_color(id(btn_l2), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+          }
+
+          // Dynamic Logo glyph and color update
+          int logo = id(l2_logo);
+          const char* glyph = "\U000F0769"; // default BULB
+          if (logo == 2) glyph = "\U000F179B"; // SPOT
+          else if (logo == 3) glyph = "\U000F1798"; // FAN+L
+          else if (logo == 4) glyph = "\U000F1054"; // LAMP
+          else if (logo == 5) glyph = "\U000F0425"; // POWER
+          else if (logo == 6) glyph = "\U000F0210"; // FAN
+          else if (logo == 7) glyph = "\U000F001B"; // A/C
+          else if (logo == 8) glyph = "\U000F02E3"; // BED
+
+          lv_label_set_text(id(l2_logo_label), glyph);
+
+          if (light->remote_values.is_on()) {
+            if (id(l2_type) == 1) {
+              float ct = light->remote_values.get_color_temperature();
+              float pct = (ct - 153.0f) / (500.0f - 153.0f);
+              pct = std::max(0.0f, std::min(1.0f, pct));
+              int r, g, b;
+              if (pct <= 0.5f) {
+                float p = pct * 2.0f;
+                r = int(p * 255); g = 255; b = 255;
+              } else {
+                float p = (pct - 0.5f) * 2.0f;
+                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+              }
+              uint32_t color = (b << 16) | (g << 8) | r;
+              lv_obj_set_style_text_color(id(l2_logo_label), lv_color_hex(color), LV_PART_MAIN);
+            } else {
+              lv_obj_set_style_text_color(id(l2_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
+            }
+          } else {
+            lv_obj_set_style_text_color(id(l2_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN); // Slate grey
+          }
+
+          // Sync the switch page toggle button and text when active
+          if (id(active_channel) == 2) {
+            lv_label_set_text(id(switch_page_logo_label), glyph);
+            if (light->remote_values.is_on()) {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+              if (id(l2_type) == 1) {
+                float ct = light->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              } else {
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+              }
+            } else {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+              lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+            }
+          }
+
+  # Channel 3 Light
+  - platform: color_temperature
+    name: "CYD L3"
+    id: cyd_l3
+    gamma_correct: 0
+    color_temperature: l3_color_temp_out
+    brightness: l3_brightness_out
+    cold_white_color_temperature: 153 mireds
+    warm_white_color_temperature: 500 mireds
+    default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_state:
+      - if:
+          condition:
+            lambda: 'return id(active_channel) == 3;'
+          then:
+            - lvgl.slider.update:
+                id: brightness_slider
+                value: !lambda |-
+                  auto light = id(cyd_l3);
+                  return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+            - lvgl.slider.update:
+                id: tone_slider
+                value: !lambda |-
+                  return id(cyd_l3)->remote_values.get_color_temperature();
+            - lambda: |-
+                float ct = id(cyd_l3)->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+      - lvgl.label.update:
+          id: l3_status_label
+          text: !lambda |-
+            auto light = id(cyd_l3);
+            if (light->remote_values.is_on()) {
+              return str_sprintf("ON (%d%%)", int(light->remote_values.get_brightness() * 100));
+            } else {
+              return std::string("OFF");
+            }
+      - lambda: |-
+          auto light = id(cyd_l3);
+          if (light->remote_values.is_on()) {
+            id(l3_saved_brightness) = light->remote_values.get_brightness();
+            id(l3_saved_color_temp) = light->remote_values.get_color_temperature();
+            lv_obj_set_style_bg_color(id(btn_l3), lv_color_hex(0x2C4022), LV_PART_MAIN);
+          } else {
+            lv_obj_set_style_bg_color(id(btn_l3), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+          }
+
+          // Dynamic Logo glyph and color update
+          int logo = id(l3_logo);
+          const char* glyph = "\U000F0769"; // default BULB
+          if (logo == 2) glyph = "\U000F179B"; // SPOT
+          else if (logo == 3) glyph = "\U000F1798"; // FAN+L
+          else if (logo == 4) glyph = "\U000F1054"; // LAMP
+          else if (logo == 5) glyph = "\U000F0425"; // POWER
+          else if (logo == 6) glyph = "\U000F0210"; // FAN
+          else if (logo == 7) glyph = "\U000F001B"; // A/C
+          else if (logo == 8) glyph = "\U000F02E3"; // BED
+
+          lv_label_set_text(id(l3_logo_label), glyph);
+
+          if (light->remote_values.is_on()) {
+            if (id(l3_type) == 1) {
+              float ct = light->remote_values.get_color_temperature();
+              float pct = (ct - 153.0f) / (500.0f - 153.0f);
+              pct = std::max(0.0f, std::min(1.0f, pct));
+              int r, g, b;
+              if (pct <= 0.5f) {
+                float p = pct * 2.0f;
+                r = int(p * 255); g = 255; b = 255;
+              } else {
+                float p = (pct - 0.5f) * 2.0f;
+                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+              }
+              uint32_t color = (b << 16) | (g << 8) | r;
+              lv_obj_set_style_text_color(id(l3_logo_label), lv_color_hex(color), LV_PART_MAIN);
+            } else {
+              lv_obj_set_style_text_color(id(l3_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
+            }
+          } else {
+            lv_obj_set_style_text_color(id(l3_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN); // Slate grey
+          }
+
+          // Sync the switch page toggle button and text when active
+          if (id(active_channel) == 3) {
+            lv_label_set_text(id(switch_page_logo_label), glyph);
+            if (light->remote_values.is_on()) {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+              if (id(l3_type) == 1) {
+                float ct = light->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              } else {
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+              }
+            } else {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+              lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+            }
+          }
+
+  # Channel 4 Light
+  - platform: color_temperature
+    name: "CYD L4"
+    id: cyd_l4
+    gamma_correct: 0
+    color_temperature: l4_color_temp_out
+    brightness: l4_brightness_out
+    cold_white_color_temperature: 153 mireds
+    warm_white_color_temperature: 500 mireds
+    default_transition_length: 0s
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_state:
+      - if:
+          condition:
+            lambda: 'return id(active_channel) == 4;'
+          then:
+            - lvgl.slider.update:
+                id: brightness_slider
+                value: !lambda |-
+                  auto light = id(cyd_l4);
+                  return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+            - lvgl.slider.update:
+                id: tone_slider
+                value: !lambda |-
+                  return id(cyd_l4)->remote_values.get_color_temperature();
+            - lambda: |-
+                float ct = id(cyd_l4)->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+      - lvgl.label.update:
+          id: l4_status_label
+          text: !lambda |-
+            auto light = id(cyd_l4);
+            if (light->remote_values.is_on()) {
+              return str_sprintf("ON (%d%%)", int(light->remote_values.get_brightness() * 100));
+            } else {
+              return std::string("OFF");
+            }
+      - lambda: |-
+          auto light = id(cyd_l4);
+          if (light->remote_values.is_on()) {
+            id(l4_saved_brightness) = light->remote_values.get_brightness();
+            id(l4_saved_color_temp) = light->remote_values.get_color_temperature();
+            lv_obj_set_style_bg_color(id(btn_l4), lv_color_hex(0x2C4022), LV_PART_MAIN);
+          } else {
+            lv_obj_set_style_bg_color(id(btn_l4), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+          }
+
+          // Dynamic Logo glyph and color update
+          int logo = id(l4_logo);
+          const char* glyph = "\U000F0769"; // default BULB
+          if (logo == 2) glyph = "\U000F179B"; // SPOT
+          else if (logo == 3) glyph = "\U000F1798"; // FAN+L
+          else if (logo == 4) glyph = "\U000F1054"; // LAMP
+          else if (logo == 5) glyph = "\U000F0425"; // POWER
+          else if (logo == 6) glyph = "\U000F0210"; // FAN
+          else if (logo == 7) glyph = "\U000F001B"; // A/C
+          else if (logo == 8) glyph = "\U000F02E3"; // BED
+
+          lv_label_set_text(id(l4_logo_label), glyph);
+
+          if (light->remote_values.is_on()) {
+            if (id(l4_type) == 1) {
+              float ct = light->remote_values.get_color_temperature();
+              float pct = (ct - 153.0f) / (500.0f - 153.0f);
+              pct = std::max(0.0f, std::min(1.0f, pct));
+              int r, g, b;
+              if (pct <= 0.5f) {
+                float p = pct * 2.0f;
+                r = int(p * 255); g = 255; b = 255;
+              } else {
+                float p = (pct - 0.5f) * 2.0f;
+                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+              }
+              uint32_t color = (b << 16) | (g << 8) | r;
+              lv_obj_set_style_text_color(id(l4_logo_label), lv_color_hex(color), LV_PART_MAIN);
+            } else {
+              lv_obj_set_style_text_color(id(l4_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
+            }
+          } else {
+            lv_obj_set_style_text_color(id(l4_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN); // Slate grey
+          }
+
+          // Sync the switch page toggle button and text when active
+          if (id(active_channel) == 4) {
+            lv_label_set_text(id(switch_page_logo_label), glyph);
+            if (light->remote_values.is_on()) {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+              if (id(l4_type) == 1) {
+                float ct = light->remote_values.get_color_temperature();
+                float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                pct = std::max(0.0f, std::min(1.0f, pct));
+                int r, g, b;
+                if (pct <= 0.5f) {
+                  float p = pct * 2.0f;
+                  r = int(p * 255); g = 255; b = 255;
+                } else {
+                  float p = (pct - 0.5f) * 2.0f;
+                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                }
+                uint32_t color = (b << 16) | (g << 8) | r;
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              } else {
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+              }
+            } else {
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+              lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+              lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+            }
+          }
+
+# Core LVGL touchscreen UI Configuration
+lvgl:
+  displays:
+    - cyd_display
+  touchscreens:
+    - touchscreen_id: cyd_touchscreen
+      long_press_time: 750ms
+  style_definitions:
+    # Font and color styles
+    - id: style_title_text
+      text_font: font_title
+      text_color: 0xFFFFFF
+    - id: style_normal_text
+      text_font: font_normal
+      text_color: 0xCBD5E1
+    - id: style_small_text
+      text_font: font_small
+      text_color: 0x94A3B8
+      
+    # Custom dashboard card buttons
+    - id: style_card_btn
+      bg_color: 0x2E3238
+      radius: 12
+      border_width: 1
+      border_color: 0x3E444D
+      pad_all: 10
+    - id: style_card_btn_pressed
+      bg_color: 0x4A6984
+      border_color: 0x6080A0
+    - id: style_icon
+      text_font: font_icon
+      text_color: 0x64748B
+    - id: style_icon_large
+      text_font: font_icon_large
+      text_color: 0x64748B
+    - id: style_icon_toggle
+      text_font: font_icon_toggle
+      text_color: 0xFFEB3B
+
+  pages:
+    # ------------------- 1. Main Page Dashboard (Symmetrically scaled for 480x320) -------------------
+    - id: main_page
+      bg_color: 0x1A1D20
+      widgets:
+        # Channel 1 Card
+        - button:
+            id: btn_l1
+            x: 10
+            y: 10
+            width: 220
+            height: 140
+            styles:
+              - style_card_btn
+            on_press:
+              - lambda: 'id(l1_long_pressed) = false;'
+            on_click:
+              - if:
+                  condition:
+                    lambda: 'return !id(l1_long_pressed);'
+                  then:
+                    - light.toggle: cyd_l1
+            on_long_press:
+              - lambda: |-
+                  id(l1_long_pressed) = true;
+                  id(active_channel) = 1;
+                  float ct = id(cyd_l1)->remote_values.get_color_temperature();
+                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                  pct = std::max(0.0f, std::min(1.0f, pct));
+                  int r, g, b;
+                  if (pct <= 0.5f) {
+                    float p = pct * 2.0f;
+                    r = int(p * 255); g = 255; b = 255;
+                  } else {
+                    float p = (pct - 0.5f) * 2.0f;
+                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                  }
+                  uint32_t color = (b << 16) | (g << 8) | r;
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+              - lvgl.label.update:
+                  id: channel_title
+                  text: !lambda |-
+                    return std::string(lv_label_get_text(id(l1_name_label)));
+              - lvgl.slider.update:
+                  id: brightness_slider
+                  value: !lambda |-
+                    auto light = id(cyd_l1);
+                    return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+              - lvgl.slider.update:
+                  id: tone_slider
+                  value: !lambda |-
+                    return id(cyd_l1)->remote_values.get_color_temperature();
+              - if:
+                  condition:
+                    lambda: 'return id(l1_type) == 1;'
+                  then:
+                    - lvgl.page.show: channel_page
+                  else:
+                    - lvgl.label.update:
+                        id: switch_title
+                        text: !lambda |-
+                          return std::string(lv_label_get_text(id(l1_name_label)));
+                    - lambda: |-
+                        auto light = id(cyd_l1);
+                        int logo = id(l1_logo);
+                        const char* glyph = "\U000F0769";
+                        if (logo == 2) glyph = "\U000F179B";
+                        else if (logo == 3) glyph = "\U000F1798";
+                        else if (logo == 4) glyph = "\U000F1054";
+                        else if (logo == 5) glyph = "\U000F0425";
+                        else if (logo == 6) glyph = "\U000F0210";
+                        else if (logo == 7) glyph = "\U000F001B";
+                        else if (logo == 8) glyph = "\U000F02E3";
+                        lv_label_set_text(id(switch_page_logo_label), glyph);
+
+                        if (light->remote_values.is_on()) {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+                          if (logo >= 1 && logo <= 4) {
+                            float ct = light->remote_values.get_color_temperature();
+                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                            pct = std::max(0.0f, std::min(1.0f, pct));
+                            int r, g, b;
+                            if (pct <= 0.5f) {
+                              float p = pct * 2.0f;
+                              r = int(p * 255); g = 255; b = 255;
+                            } else {
+                              float p = (pct - 0.5f) * 2.0f;
+                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                            }
+                            uint32_t color = (b << 16) | (g << 8) | r;
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                          } else {
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+                          }
+                        } else {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+                          lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+                        }
+                    - lvgl.page.show: switch_page
+            widgets:
+              - label:
+                  id: l1_name_label
+                  text: "L1"
+                  align: TOP_LEFT
+                  styles:
+                    - style_title_text
+              - label:
+                  id: l1_status_label
+                  text: "OFF"
+                  align: BOTTOM_LEFT
+                  styles:
+                    - style_normal_text
+              - label:
+                  id: l1_logo_label
+                  text: "\U000F0769"
+                  align: CENTER
+                  x: 45
+                  y: 5
+                  styles:
+                    - style_icon_large
+
+        # Channel 2 Card
+        - button:
+            id: btn_l2
+            x: 250
+            y: 10
+            width: 220
+            height: 140
+            styles:
+              - style_card_btn
+            on_press:
+              - lambda: 'id(l2_long_pressed) = false;'
+            on_click:
+              - if:
+                  condition:
+                    lambda: 'return !id(l2_long_pressed);'
+                  then:
+                    - light.toggle: cyd_l2
+            on_long_press:
+              - lambda: |-
+                  id(l2_long_pressed) = true;
+                  id(active_channel) = 2;
+                  float ct = id(cyd_l2)->remote_values.get_color_temperature();
+                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                  pct = std::max(0.0f, std::min(1.0f, pct));
+                  int r, g, b;
+                  if (pct <= 0.5f) {
+                    float p = pct * 2.0f;
+                    r = int(p * 255); g = 255; b = 255;
+                  } else {
+                    float p = (pct - 0.5f) * 2.0f;
+                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                  }
+                  uint32_t color = (b << 16) | (g << 8) | r;
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+              - lvgl.label.update:
+                  id: channel_title
+                  text: !lambda |-
+                    return std::string(lv_label_get_text(id(l2_name_label)));
+              - lvgl.slider.update:
+                  id: brightness_slider
+                  value: !lambda |-
+                    auto light = id(cyd_l2);
+                    return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+              - lvgl.slider.update:
+                  id: tone_slider
+                  value: !lambda |-
+                    return id(cyd_l2)->remote_values.get_color_temperature();
+              - if:
+                  condition:
+                    lambda: 'return id(l2_type) == 1;'
+                  then:
+                    - lvgl.page.show: channel_page
+                  else:
+                    - lvgl.label.update:
+                        id: switch_title
+                        text: !lambda |-
+                          return std::string(lv_label_get_text(id(l2_name_label)));
+                    - lambda: |-
+                        auto light = id(cyd_l2);
+                        int logo = id(l2_logo);
+                        const char* glyph = "\U000F0769";
+                        if (logo == 2) glyph = "\U000F179B";
+                        else if (logo == 3) glyph = "\U000F1798";
+                        else if (logo == 4) glyph = "\U000F1054";
+                        else if (logo == 5) glyph = "\U000F0425";
+                        else if (logo == 6) glyph = "\U000F0210";
+                        else if (logo == 7) glyph = "\U000F001B";
+                        else if (logo == 8) glyph = "\U000F02E3";
+                        lv_label_set_text(id(switch_page_logo_label), glyph);
+
+                        if (light->remote_values.is_on()) {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+                          if (logo >= 1 && logo <= 4) {
+                            float ct = light->remote_values.get_color_temperature();
+                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                            pct = std::max(0.0f, std::min(1.0f, pct));
+                            int r, g, b;
+                            if (pct <= 0.5f) {
+                              float p = pct * 2.0f;
+                              r = int(p * 255); g = 255; b = 255;
+                            } else {
+                              float p = (pct - 0.5f) * 2.0f;
+                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                            }
+                            uint32_t color = (b << 16) | (g << 8) | r;
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                          } else {
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+                          }
+                        } else {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+                          lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+                        }
+                    - lvgl.page.show: switch_page
+            widgets:
+              - label:
+                  id: l2_name_label
+                  text: "L2"
+                  align: TOP_RIGHT
+                  styles:
+                    - style_title_text
+              - label:
+                  id: l2_status_label
+                  text: "OFF"
+                  align: BOTTOM_RIGHT
+                  styles:
+                    - style_normal_text
+              - label:
+                  id: l2_logo_label
+                  text: "\U000F0769"
+                  align: CENTER
+                  x: -45
+                  y: 5
+                  styles:
+                    - style_icon_large
+
+        # Channel 3 Card
+        - button:
+            id: btn_l3
+            x: 10
+            y: 170
+            width: 220
+            height: 140
+            styles:
+              - style_card_btn
+            on_press:
+              - lambda: 'id(l3_long_pressed) = false;'
+            on_click:
+              - if:
+                  condition:
+                    lambda: 'return !id(l3_long_pressed);'
+                  then:
+                    - light.toggle: cyd_l3
+            on_long_press:
+              - lambda: |-
+                  id(l3_long_pressed) = true;
+                  id(active_channel) = 3;
+                  float ct = id(cyd_l3)->remote_values.get_color_temperature();
+                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                  pct = std::max(0.0f, std::min(1.0f, pct));
+                  int r, g, b;
+                  if (pct <= 0.5f) {
+                    float p = pct * 2.0f;
+                    r = int(p * 255); g = 255; b = 255;
+                  } else {
+                    float p = (pct - 0.5f) * 2.0f;
+                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                  }
+                  uint32_t color = (b << 16) | (g << 8) | r;
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+              - lvgl.label.update:
+                  id: channel_title
+                  text: !lambda |-
+                    return std::string(lv_label_get_text(id(l3_name_label)));
+              - lvgl.slider.update:
+                  id: brightness_slider
+                  value: !lambda |-
+                    auto light = id(cyd_l3);
+                    return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+              - lvgl.slider.update:
+                  id: tone_slider
+                  value: !lambda |-
+                    return id(cyd_l3)->remote_values.get_color_temperature();
+              - if:
+                  condition:
+                    lambda: 'return id(l3_type) == 1;'
+                  then:
+                    - lvgl.page.show: channel_page
+                  else:
+                    - lvgl.label.update:
+                        id: switch_title
+                        text: !lambda |-
+                          return std::string(lv_label_get_text(id(l3_name_label)));
+                    - lambda: |-
+                        auto light = id(cyd_l3);
+                        int logo = id(l3_logo);
+                        const char* glyph = "\U000F0769";
+                        if (logo == 2) glyph = "\U000F179B";
+                        else if (logo == 3) glyph = "\U000F1798";
+                        else if (logo == 4) glyph = "\U000F1054";
+                        else if (logo == 5) glyph = "\U000F0425";
+                        else if (logo == 6) glyph = "\U000F0210";
+                        else if (logo == 7) glyph = "\U000F001B";
+                        else if (logo == 8) glyph = "\U000F02E3";
+                        lv_label_set_text(id(switch_page_logo_label), glyph);
+
+                        if (light->remote_values.is_on()) {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+                          if (logo >= 1 && logo <= 4) {
+                            float ct = light->remote_values.get_color_temperature();
+                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                            pct = std::max(0.0f, std::min(1.0f, pct));
+                            int r, g, b;
+                            if (pct <= 0.5f) {
+                              float p = pct * 2.0f;
+                              r = int(p * 255); g = 255; b = 255;
+                            } else {
+                              float p = (pct - 0.5f) * 2.0f;
+                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                            }
+                            uint32_t color = (b << 16) | (g << 8) | r;
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                          } else {
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+                          }
+                        } else {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+                          lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+                        }
+                    - lvgl.page.show: switch_page
+            widgets:
+              - label:
+                  id: l3_name_label
+                  text: "L3"
+                  align: TOP_LEFT
+                  styles:
+                    - style_title_text
+              - label:
+                  id: l3_status_label
+                  text: "OFF"
+                  align: BOTTOM_LEFT
+                  styles:
+                    - style_normal_text
+              - label:
+                  id: l3_logo_label
+                  text: "\U000F0769"
+                  align: CENTER
+                  x: 45
+                  y: 35
+                  styles:
+                    - style_icon_large
+
+        # Channel 4 Card
+        - button:
+            id: btn_l4
+            x: 250
+            y: 170
+            width: 220
+            height: 140
+            styles:
+              - style_card_btn
+            on_press:
+              - lambda: 'id(l4_long_pressed) = false;'
+            on_click:
+              - if:
+                  condition:
+                    lambda: 'return !id(l4_long_pressed);'
+                  then:
+                    - light.toggle: cyd_l4
+            on_long_press:
+              - lambda: |-
+                  id(l4_long_pressed) = true;
+                  id(active_channel) = 4;
+                  float ct = id(cyd_l4)->remote_values.get_color_temperature();
+                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                  pct = std::max(0.0f, std::min(1.0f, pct));
+                  int r, g, b;
+                  if (pct <= 0.5f) {
+                    float p = pct * 2.0f;
+                    r = int(p * 255); g = 255; b = 255;
+                  } else {
+                    float p = (pct - 0.5f) * 2.0f;
+                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                  }
+                  uint32_t color = (b << 16) | (g << 8) | r;
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+              - lvgl.label.update:
+                  id: channel_title
+                  text: !lambda |-
+                    return std::string(lv_label_get_text(id(l4_name_label)));
+              - lvgl.slider.update:
+                  id: brightness_slider
+                  value: !lambda |-
+                    auto light = id(cyd_l4);
+                    return (light->remote_values.is_on() ? light->remote_values.get_brightness() : 0.0f) * 100.0f;
+              - lvgl.slider.update:
+                  id: tone_slider
+                  value: !lambda |-
+                    return id(cyd_l4)->remote_values.get_color_temperature();
+              - if:
+                  condition:
+                    lambda: 'return id(l4_type) == 1;'
+                  then:
+                    - lvgl.page.show: channel_page
+                  else:
+                    - lvgl.label.update:
+                        id: switch_title
+                        text: !lambda |-
+                          return std::string(lv_label_get_text(id(l4_name_label)));
+                    - lambda: |-
+                        auto light = id(cyd_l4);
+                        int logo = id(l4_logo);
+                        const char* glyph = "\U000F0769";
+                        if (logo == 2) glyph = "\U000F179B";
+                        else if (logo == 3) glyph = "\U000F1798";
+                        else if (logo == 4) glyph = "\U000F1054";
+                        else if (logo == 5) glyph = "\U000F0425";
+                        else if (logo == 6) glyph = "\U000F0210";
+                        else if (logo == 7) glyph = "\U000F001B";
+                        else if (logo == 8) glyph = "\U000F02E3";
+                        lv_label_set_text(id(switch_page_logo_label), glyph);
+
+                        if (light->remote_values.is_on()) {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "ACTIVE");
+                          if (logo >= 1 && logo <= 4) {
+                            float ct = light->remote_values.get_color_temperature();
+                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                            pct = std::max(0.0f, std::min(1.0f, pct));
+                            int r, g, b;
+                            if (pct <= 0.5f) {
+                              float p = pct * 2.0f;
+                              r = int(p * 255); g = 255; b = 255;
+                            } else {
+                              float p = (pct - 0.5f) * 2.0f;
+                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                            }
+                            uint32_t color = (b << 16) | (g << 8) | r;
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                          } else {
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
+                          }
+                        } else {
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                          lv_label_set_text(id(switch_toggle_label), "INACTIVE");
+                          lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
+                        }
+                    - lvgl.page.show: switch_page
+            widgets:
+              - label:
+                  id: l4_name_label
+                  text: "L4"
+                  align: TOP_RIGHT
+                  styles:
+                    - style_title_text
+              - label:
+                  id: l4_status_label
+                  text: "OFF"
+                  align: BOTTOM_RIGHT
+                  styles:
+                    - style_normal_text
+              - label:
+                  id: l4_logo_label
+                  text: "\U000F0769"
+                  align: CENTER
+                  x: -45
+                  y: 35
+                  styles:
+                    - style_icon_large
+
+        # Center Layered settings button (Perfect center of 480x320 screen)
+        - button:
+            id: btn_settings
+            x: 190
+            y: 110
+            width: 100
+            height: 100
+            radius: 50
+            bg_color: 0x4A6984
+            border_width: 5
+            border_color: 0x1A1D20
+            on_click:
+              - lambda: |-
+                  // Update screen timeout slider and label using step index mapping
+                  int to_val = id(screen_timeout_s);
+                  int idx = 3; // default 1m
+                  if (to_val == 5) idx = 0;
+                  else if (to_val == 15) idx = 1;
+                  else if (to_val == 30) idx = 2;
+                  else if (to_val == 60) idx = 3;
+                  else if (to_val == 180) idx = 4;
+                  else if (to_val == 300) idx = 5;
+                  else if (to_val == 600) idx = 6;
+                  else {
+                    // Fallback to closest step
+                    const int timeouts[] = {5, 15, 30, 60, 180, 300, 600};
+                    int min_diff = 9999;
+                    for (int i = 0; i < 7; i++) {
+                      int diff = abs(to_val - timeouts[i]);
+                      if (diff < min_diff) {
+                        min_diff = diff;
+                        idx = i;
+                      }
+                    }
+                  }
+                  lv_slider_set_value(id(timeout_slider), idx, LV_ANIM_OFF);
+                  
+                  const char* labels[] = {
+                    "Screen Timeout: 5s", "Screen Timeout: 15s", "Screen Timeout: 30s", 
+                    "Screen Timeout: 1m", "Screen Timeout: 3m", "Screen Timeout: 5m", "Screen Timeout: 10m"
+                  };
+                  lv_label_set_text(id(timeout_label), labels[idx]);
+
+                  // Update backlight slider
+                  float bl = id(cyd_backlight)->remote_values.get_brightness();
+                  lv_slider_set_value(id(backlight_override_slider), int(bl * 100.0f), LV_ANIM_OFF);
+              - lvgl.page.show: settings_page
+            widgets:
+              - label:
+                  id: settings_time_label
+                  text: "--:--"
+                  align: CENTER
+                  styles:
+                    - style_normal_text
+
+    # ------------------- 2. Channel sub menu page -------------------
+    - id: channel_page
+      bg_color: 0x1A1D20
+      widgets:
+        # Title
+        - label:
+            id: channel_title
+            text: "Channel 1"
+            x: 110
+            y: 20
+            styles:
+              - style_title_text
+
+        # Back Button
+        - button:
+            id: btn_back
+            x: 15
+            y: 15
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - lvgl.page.show: main_page
+            widgets:
+              - label:
+                  text: "BACK"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Config Button (Sub-Sub Menu)
+        - button:
+            id: btn_config_dimmer
+            x: 385
+            y: 15
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - lambda: |-
+                  id(config_channel) = id(active_channel);
+                  int ch = id(config_channel);
+                  int type = (ch == 1) ? id(l1_type) : ((ch == 2) ? id(l2_type) : ((ch == 3) ? id(l3_type) : id(l4_type)));
+                  int logo = (ch == 1) ? id(l1_logo) : ((ch == 2) ? id(l2_logo) : ((ch == 3) ? id(l3_logo) : id(l4_logo)));
+
+                  // Dynamic config title
+                  const char* name = "";
+                  if (ch == 1) name = lv_label_get_text(id(l1_name_label));
+                  else if (ch == 2) name = lv_label_get_text(id(l2_name_label));
+                  else if (ch == 3) name = lv_label_get_text(id(l3_name_label));
+                  else if (ch == 4) name = lv_label_get_text(id(l4_name_label));
+                  std::string title_str = "Configure " + std::string(name);
+                  lv_label_set_text(id(config_title), title_str.c_str());
+
+                  // Highlight active modes and logos
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+
+                  set_btn_active(id(btn_mode_dimmer), type == 1);
+                  set_btn_active(id(btn_mode_switch), type == 2);
+
+                  set_btn_active(id(btn_logo_1), logo == 1);
+                  set_btn_active(id(btn_logo_2), logo == 2);
+                  set_btn_active(id(btn_logo_3), logo == 3);
+                  set_btn_active(id(btn_logo_4), logo == 4);
+                  set_btn_active(id(btn_logo_5), logo == 5);
+                  set_btn_active(id(btn_logo_6), logo == 6);
+                  set_btn_active(id(btn_logo_7), logo == 7);
+                  set_btn_active(id(btn_logo_8), logo == 8);
+              - lvgl.page.show: config_page
+            widgets:
+              - label:
+                  text: "CONFIG"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Brightness Section
+        - label:
+            id: brightness_label
+            text: "Brightness"
+            x: 75
+            y: 75
+            styles:
+              - style_normal_text
+
+        - slider:
+            id: brightness_slider
+            x: 75
+            y: 105
+            width: 330
+            height: 35
+            min_value: 0
+            max_value: 100
+            bg_color: 0x000000
+            bg_grad_color: 0xD6E8FF
+            bg_grad_dir: HOR
+            bg_opa: 100%
+            radius: 8
+            indicator:
+              bg_opa: 0%
+            knob:
+              bg_color: 0xFFFFFF
+              radius: 12
+            on_release:
+              - lambda: |-
+                  float val = x / 100.0f;
+                  int ch = id(active_channel);
+                  light::LightState* lt = nullptr;
+                  if (ch == 1) lt = id(cyd_l1);
+                  else if (ch == 2) lt = id(cyd_l2);
+                  else if (ch == 3) lt = id(cyd_l3);
+                  else if (ch == 4) lt = id(cyd_l4);
+                  
+                  if (lt != nullptr) {
+                    auto call = lt->make_call();
+                    call.set_brightness(val);
+                    call.set_state(val > 0.0f);
+                    call.perform();
+                  }
+
+        # Tone / Color Temp Section
+        - label:
+            id: tone_label
+            text: "Color Temperature (Tone)"
+            x: 75
+            y: 170
+            styles:
+              - style_normal_text
+
+        - slider:
+            id: tone_slider
+            x: 75
+            y: 200
+            width: 330
+            height: 35
+            min_value: 153
+            max_value: 500
+            bg_color: 0xFFFF00
+            bg_grad_color: 0x00A5FF
+            bg_grad_dir: HOR
+            bg_opa: 100%
+            radius: 8
+            indicator:
+              bg_opa: 0%
+            knob:
+              bg_color: 0xFFFFFF
+              radius: 12
+            on_value:
+              - lambda: |-
+                  float ct = x;
+                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
+                  pct = std::max(0.0f, std::min(1.0f, pct));
+                  int r, g, b;
+                  if (pct <= 0.5f) {
+                    float p = pct * 2.0f;
+                    r = int(p * 255); g = 255; b = 255;
+                  } else {
+                    float p = (pct - 0.5f) * 2.0f;
+                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
+                  }
+                  uint32_t color = (b << 16) | (g << 8) | r;
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+            on_release:
+              - lambda: |-
+                  int ch = id(active_channel);
+                  light::LightState* lt = nullptr;
+                  if (ch == 1) lt = id(cyd_l1);
+                  else if (ch == 2) lt = id(cyd_l2);
+                  else if (ch == 3) lt = id(cyd_l3);
+                  else if (ch == 4) lt = id(cyd_l4);
+                  
+                  if (lt != nullptr) {
+                    auto call = lt->make_call();
+                    call.set_color_temperature(x);
+                    call.perform();
+                  }
+
+    # ------------------- 2.1 Switch sub menu page -------------------
+    - id: switch_page
+      bg_color: 0x1A1D20
+      widgets:
+        # Title
+        - label:
+            id: switch_title
+            text: "Switch"
+            x: 110
+            y: 20
+            styles:
+              - style_title_text
+
+        # Back Button
+        - button:
+            id: btn_switch_back
+            x: 15
+            y: 15
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - lvgl.page.show: main_page
+            widgets:
+              - label:
+                  text: "BACK"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Config Button (Sub-Sub Menu)
+        - button:
+            id: btn_config_switch
+            x: 385
+            y: 15
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - lambda: |-
+                  id(config_channel) = id(active_channel);
+                  int ch = id(config_channel);
+                  int type = (ch == 1) ? id(l1_type) : ((ch == 2) ? id(l2_type) : ((ch == 3) ? id(l3_type) : id(l4_type)));
+                  int logo = (ch == 1) ? id(l1_logo) : ((ch == 2) ? id(l2_logo) : ((ch == 3) ? id(l3_logo) : id(l4_logo)));
+
+                  // Dynamic config title
+                  const char* name = "";
+                  if (ch == 1) name = lv_label_get_text(id(l1_name_label));
+                  else if (ch == 2) name = lv_label_get_text(id(l2_name_label));
+                  else if (ch == 3) name = lv_label_get_text(id(l3_name_label));
+                  else if (ch == 4) name = lv_label_get_text(id(l4_name_label));
+                  std::string title_str = "Configure " + std::string(name);
+                  lv_label_set_text(id(config_title), title_str.c_str());
+
+                  // Highlight active modes and logos
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+
+                  set_btn_active(id(btn_mode_dimmer), type == 1);
+                  set_btn_active(id(btn_mode_switch), type == 2);
+
+                  set_btn_active(id(btn_logo_1), logo == 1);
+                  set_btn_active(id(btn_logo_2), logo == 2);
+                  set_btn_active(id(btn_logo_3), logo == 3);
+                  set_btn_active(id(btn_logo_4), logo == 4);
+                  set_btn_active(id(btn_logo_5), logo == 5);
+                  set_btn_active(id(btn_logo_6), logo == 6);
+                  set_btn_active(id(btn_logo_7), logo == 7);
+                  set_btn_active(id(btn_logo_8), logo == 8);
+              - lvgl.page.show: config_page
+            widgets:
+              - label:
+                  text: "CONFIG"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Large Toggle Switch Button (Centered for 480x320)
+        - button:
+            id: btn_switch_toggle
+            x: 120
+            y: 90
+            width: 240
+            height: 160
+            bg_color: 0x2E3238
+            radius: 20
+            border_width: 2
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(active_channel);
+                  if (ch == 1) id(cyd_l1)->toggle().perform();
+                  else if (ch == 2) id(cyd_l2)->toggle().perform();
+                  else if (ch == 3) id(cyd_l3)->toggle().perform();
+                  else if (ch == 4) id(cyd_l4)->toggle().perform();
+            widgets:
+              # Selected Logo Icon shown large
+              - label:
+                  id: switch_page_logo_label
+                  text: "\U000F0769"
+                  align: CENTER
+                  y: -5
+                  styles:
+                    - style_icon_large
+              # Underneath Status Text
+              - label:
+                  id: switch_toggle_label
+                  text: "INACTIVE"
+                  align: CENTER
+                  y: 35
+                  styles:
+                    - style_normal_text
+
+    # ------------------- 2.2 Configuration Page (Sub-Sub Menu) -------------------
+    - id: config_page
+      bg_color: 0x1A1D20
+      widgets:
+        # Title
+        - label:
+            id: config_title
+            text: "Configure Channel"
+            x: 110
+            y: 20
+            styles:
+              - style_title_text
+
+        # Back Button (Dynamically route to previous sliders or switch page based on type)
+        - button:
+            id: btn_config_back
+            x: 15
+            y: 15
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - if:
+                  condition:
+                    lambda: |-
+                      int ch = id(config_channel);
+                      int type = (ch == 1) ? id(l1_type) : ((ch == 2) ? id(l2_type) : ((ch == 3) ? id(l3_type) : id(l4_type)));
+                      return type == 1;
+                  then:
+                    - lvgl.page.show: channel_page
+                  else:
+                    - lvgl.page.show: switch_page
+            widgets:
+              - label:
+                  text: "BACK"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Channel Mode Section Label
+        - label:
+            id: config_mode_label
+            text: "Channel Mode"
+            x: 30
+            y: 60
+            styles:
+              - style_normal_text
+
+        # Dimmer/Sliders Mode Button
+        - button:
+            id: btn_mode_dimmer
+            x: 30
+            y: 85
+            width: 195
+            height: 35
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  if (ch == 1) id(l1_type) = 1;
+                  else if (ch == 2) id(l2_type) = 1;
+                  else if (ch == 3) id(l3_type) = 1;
+                  else if (ch == 4) id(l4_type) = 1;
+
+                  // Update button highlights
+                  lv_obj_set_style_bg_color(id(btn_mode_dimmer), lv_color_hex(0x4A6984), LV_PART_MAIN);
+                  lv_obj_set_style_border_color(id(btn_mode_dimmer), lv_color_hex(0x6080A0), LV_PART_MAIN);
+                  lv_obj_set_style_bg_color(id(btn_mode_switch), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                  lv_obj_set_style_border_color(id(btn_mode_switch), lv_color_hex(0x3E444D), LV_PART_MAIN);
+            widgets:
+              - label:
+                  text: "Dimmer (Sliders)"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Switch/Toggle Mode Button
+        - button:
+            id: btn_mode_switch
+            x: 255
+            y: 85
+            width: 195
+            height: 35
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  if (ch == 1) id(l1_type) = 2;
+                  else if (ch == 2) id(l2_type) = 2;
+                  else if (ch == 3) id(l3_type) = 2;
+                  else if (ch == 4) id(l4_type) = 2;
+
+                  // Update button highlights
+                  lv_obj_set_style_bg_color(id(btn_mode_switch), lv_color_hex(0x4A6984), LV_PART_MAIN);
+                  lv_obj_set_style_border_color(id(btn_mode_switch), lv_color_hex(0x6080A0), LV_PART_MAIN);
+                  lv_obj_set_style_bg_color(id(btn_mode_dimmer), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                  lv_obj_set_style_border_color(id(btn_mode_dimmer), lv_color_hex(0x3E444D), LV_PART_MAIN);
+            widgets:
+              - label:
+                  text: "Switch (Toggle)"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Logo Section Label
+        - label:
+            id: config_logo_label
+            text: "Logo"
+            align: TOP_MID
+            y: 145
+            styles:
+              - style_normal_text
+
+        # Logo Button 1: Ceiling Light (BULB)
+        - button:
+            id: btn_logo_1
+            x: 50
+            y: 180
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 1;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F0769"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+        # Logo Button 2: Recessed Light (SPOT)
+        - button:
+            id: btn_logo_2
+            x: 150
+            y: 180
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 2;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F179B"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+        # Logo Button 3: Ceiling Fan Light (FAN+L)
+        - button:
+            id: btn_logo_3
+            x: 250
+            y: 180
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 3;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F1798"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+        # Logo Button 4: Outdoor Lamp (LAMP)
+        - button:
+            id: btn_logo_4
+            x: 350
+            y: 180
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 4;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F1054"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+        # Logo Button 5: On/Off Toggle (POWER)
+        - button:
+            id: btn_logo_5
+            x: 50
+            y: 235
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 5;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F0425"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+        # Logo Button 6: Ceiling Fan (FAN)
+        - button:
+            id: btn_logo_6
+            x: 150
+            y: 235
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 6;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F0210"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+        # Logo Button 7: Air Conditioner (A/C)
+        - button:
+            id: btn_logo_7
+            x: 250
+            y: 235
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 7;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F001B"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+        # Logo Button 8: Bed Icon (BED)
+        - button:
+            id: btn_logo_8
+            x: 350
+            y: 235
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  int ch = id(config_channel);
+                  int clicked = 8;
+                  if (ch == 1) { id(l1_logo) = clicked; id(cyd_l1)->publish_state(); }
+                  else if (ch == 2) { id(l2_logo) = clicked; id(cyd_l2)->publish_state(); }
+                  else if (ch == 3) { id(l3_logo) = clicked; id(cyd_l3)->publish_state(); }
+                  else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
+
+                  auto set_btn_active = [](lv_obj_t* btn, bool active) {
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+                    lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
+                  };
+                  set_btn_active(id(btn_logo_1), clicked == 1);
+                  set_btn_active(id(btn_logo_2), clicked == 2);
+                  set_btn_active(id(btn_logo_3), clicked == 3);
+                  set_btn_active(id(btn_logo_4), clicked == 4);
+                  set_btn_active(id(btn_logo_5), clicked == 5);
+                  set_btn_active(id(btn_logo_6), clicked == 6);
+                  set_btn_active(id(btn_logo_7), clicked == 7);
+                  set_btn_active(id(btn_logo_8), clicked == 8);
+            widgets:
+              - label:
+                  text: "\U000F02E3"
+                  align: CENTER
+                  styles:
+                    - style_icon
+
+    # ------------------- 3. Settings Menu page (Symmetrically scaled for 480x320) -------------------
+    - id: settings_page
+      bg_color: 0x1A1D20
+      widgets:
+        # Title
+        - label:
+            id: settings_title
+            text: "Settings"
+            x: 110
+            y: 20
+            styles:
+              - style_title_text
+
+        # Back Button
+        - button:
+            id: btn_settings_back
+            x: 15
+            y: 15
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - lvgl.page.show: main_page
+            widgets:
+              - label:
+                  text: "BACK"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # WiFi Setup Button
+        - button:
+            id: btn_wifi_setup
+            x: 315
+            y: 15
+            width: 150
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - lambda: |-
+                  esp_wifi_set_mode(WIFI_MODE_APSTA);
+                  wifi_config_t ap_config = {};
+                  strcpy((char*)ap_config.ap.ssid, "CYD-3.5-Remote-AP");
+                  strcpy((char*)ap_config.ap.password, "password123");
+                  ap_config.ap.ssid_len = strlen("CYD-3.5-Remote-AP");
+                  ap_config.ap.channel = 1;
+                  ap_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+                  ap_config.ap.max_connection = 4;
+                  esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+                  id(cyd_captive_portal)->start();
+              - lvgl.page.show: wifi_hotspot_page
+            widgets:
+              - label:
+                  text: "WIFI SETUP"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Theme Label
+        - label:
+            id: settings_theme_label
+            text: "Theme:"
+            x: 250
+            y: 108
+            styles:
+              - style_normal_text
+
+        # Theme Toggle - pill track (plain obj to avoid button padding/press-state)
+        - obj:
+            id: btn_theme_toggle_vertical
+            x: 320
+            y: 99
+            width: 76
+            height: 36
+            radius: 18
+            border_width: 1
+            border_color: 0x1565C0
+            bg_color: 0x1E88E5
+            pad_all: 0
+            on_click:
+              - lambda: |-
+                  id(dark_mode) = !id(dark_mode);
+                  global_preferences->sync();
+              - script.execute: apply_theme_script
+            widgets:
+              # Thumb circle - positioned at left initially (bright mode)
+              - obj:
+                  id: theme_toggle_thumb
+                  x: 4
+                  y: 3
+                  width: 30
+                  height: 30
+                  radius: 15
+                  bg_color: 0xFFFFFF
+                  border_width: 0
+                  pad_all: 0
+                  clickable: false
+                  widgets:
+                    - label:
+                        id: theme_toggle_icon
+                        text: "\U000F05A8"
+                        align: CENTER
+                        styles:
+                          - style_icon_toggle
+
+        # SSID Info
+        - label:
+            id: settings_ssid_label
+            text: "SSID: Searching..."
+            x: 30
+            y: 70
+            styles:
+              - style_normal_text
+
+        # IP Info
+        - label:
+            id: settings_ip_label
+            text: "IP: Connecting..."
+            x: 30
+            y: 105
+            styles:
+              - style_normal_text
+
+        # WiFi Signal Strength Label
+        - label:
+            id: settings_wifi_signal_label
+            text: "Signal:"
+            x: 250
+            y: 70
+            styles:
+              - style_normal_text
+
+
+        # WiFi Signal Multi-Height Solid Bars (Bottom-aligned with "Signal:" text)
+        - obj:
+            id: wifi_bar_1
+            x: 325
+            y: 79
+            width: 4
+            height: 6
+            bg_color: 0x2E3238
+            bg_opa: 100%
+            border_width: 0
+            radius: 1
+        - obj:
+            id: wifi_bar_2
+            x: 331
+            y: 74
+            width: 4
+            height: 11
+            bg_color: 0x2E3238
+            bg_opa: 100%
+            border_width: 0
+            radius: 1
+        - obj:
+            id: wifi_bar_3
+            x: 337
+            y: 69
+            width: 4
+            height: 16
+            bg_color: 0x2E3238
+            bg_opa: 100%
+            border_width: 0
+            radius: 1
+        - obj:
+            id: wifi_bar_4
+            x: 343
+            y: 64
+            width: 4
+            height: 21
+            bg_color: 0x2E3238
+            bg_opa: 100%
+            border_width: 0
+            radius: 1
+
+        # Screen Timeout Section
+        - label:
+            id: timeout_label
+            text: "Screen Timeout: 1m"
+            x: 75
+            y: 150
+            styles:
+              - style_normal_text
+
+        - slider:
+            id: timeout_slider
+            x: 75
+            y: 175
+            width: 330
+            height: 30
+            min_value: 0
+            max_value: 6
+            value: 3
+            bg_color: 0x141619
+            radius: 8
+            indicator:
+              bg_color: 0x6080A0
+            on_value:
+              - lambda: |-
+                  int idx = x;
+                  if (idx >= 0 && idx <= 6) {
+                    const char* labels[] = {
+                      "Screen Timeout: 5s", "Screen Timeout: 15s", "Screen Timeout: 30s", 
+                      "Screen Timeout: 1m", "Screen Timeout: 3m", "Screen Timeout: 5m", "Screen Timeout: 10m"
+                    };
+                    lv_label_set_text(id(timeout_label), labels[idx]);
+                  }
+            on_release:
+              - lambda: |-
+                  int idx = x;
+                  if (idx >= 0 && idx <= 6) {
+                    const int timeouts[] = {5, 15, 30, 60, 180, 300, 600};
+                    id(screen_timeout_s) = timeouts[idx];
+                  }
+
+        # Manual Backlight Override
+        - label:
+            id: backlight_label
+            text: "Display Backlight"
+            x: 75
+            y: 220
+            styles:
+              - style_normal_text
+
+        - slider:
+            id: backlight_override_slider
+            x: 75
+            y: 245
+            width: 330
+            height: 30
+            min_value: 10
+            max_value: 100
+            value: 80
+            bg_color: 0x141619
+            radius: 8
+            indicator:
+              bg_color: 0x6080A0
+            on_release:
+              - lambda: |-
+                  float val = x / 100.0f;
+                  auto call = id(cyd_backlight).make_call();
+                  call.set_brightness(val);
+                  call.set_state(val > 0.0f);
+                  call.perform();
+
+    # ------------------- 4. WiFi Hotspot page -------------------
+    - id: wifi_hotspot_page
+      bg_color: 0x1A1D20
+      widgets:
+        - label:
+            id: wifi_hotspot_title
+            text: "WiFi Setup Hotspot"
+            x: 110
+            y: 20
+            styles:
+              - style_title_text
+
+        # Back Button
+        - button:
+            id: btn_hotspot_back
+            x: 15
+            y: 15
+            width: 80
+            height: 40
+            bg_color: 0x2E3238
+            radius: 8
+            on_click:
+              - lambda: |-
+                  if (wifi::global_wifi_component->is_connected()) {
+                    esp_wifi_set_mode(WIFI_MODE_STA);
+                  }
+              - lvgl.page.show: settings_page
+            widgets:
+              - label:
+                  text: "BACK"
+                  align: CENTER
+                  styles:
+                    - style_small_text
+
+        # Instructions Label
+        - label:
+            id: hotspot_instructions_label
+            text: "1. Connect your phone/PC to WiFi:\n   SSID: CYD-3.5-Remote-AP\n   Password: password123\n\n2. Open your web browser to:\n   http://192.168.4.1\n\n3. Select your network & connect!"
+            x: 30
+            y: 80
+            styles:
+              - style_normal_text
+
+# Dynamically update clock and settings labels
+interval:
+  # Fast clock update (every 1 second)
+  - interval: 1s
+    then:
+      - lvgl.label.update:
+          id: settings_time_label
+          text: !lambda |-
+            char time_str[20];
+            id(sntp_time).now().strftime(time_str, sizeof(time_str), "%H:%M");
+            return std::string(time_str);
+      - if:
+          condition:
+            lambda: |-
+              return id(cyd_backlight)->remote_values.is_on() && 
+                     (lv_disp_get_inactive_time(NULL) >= (id(screen_timeout_s) * 1000));
+          then:
+            - lambda: |-
+                auto call = id(cyd_backlight).make_call();
+                call.set_state(false);
+                call.set_transition_length(500); // 0.5s fade
+                call.perform();
+            - lvgl.pause:
+
+  # Medium network and sensor refresh (every 2 seconds)
+  - interval: 2s
+    then:
+      - lvgl.label.update:
+          id: settings_ip_label
+          text: !lambda 'return "IP: " + id(cyd_ip_address).state;'
+      - lvgl.label.update:
+          id: settings_ssid_label
+          text: !lambda 'return "SSID: " + id(cyd_ssid).state;'
+      - lambda: |-
+          float rssi = id(cyd_wifi_signal).state;
+          uint32_t active_color = id(dark_mode) ? 0x4A6984 : 0x22C55E;    // Slate Blue vs Bright Green
+          uint32_t inactive_color = id(dark_mode) ? 0x2E3238 : 0xE2E8F0;  // Dark grey vs Bright grey
+          int bars = 0;
+          if (!std::isnan(rssi) && rssi != 0.0f && rssi > -100.0f) {
+            if (rssi >= -55.0f) bars = 4;
+            else if (rssi >= -70.0f) bars = 3;
+            else if (rssi >= -80.0f) bars = 2;
+            else bars = 1;
+          }
+          lv_obj_set_style_bg_color(id(wifi_bar_1), lv_color_hex(bars >= 1 ? active_color : inactive_color), LV_PART_MAIN);
+          lv_obj_set_style_bg_color(id(wifi_bar_2), lv_color_hex(bars >= 2 ? active_color : inactive_color), LV_PART_MAIN);
+          lv_obj_set_style_bg_color(id(wifi_bar_3), lv_color_hex(bars >= 3 ? active_color : inactive_color), LV_PART_MAIN);
+          lv_obj_set_style_bg_color(id(wifi_bar_4), lv_color_hex(bars >= 4 ? active_color : inactive_color), LV_PART_MAIN);
+          
+          bool is_connected = wifi::global_wifi_component->is_connected();
+          uint32_t btn_color = is_connected ? (id(dark_mode) ? 0x4A6984 : 0x22C55E) : 0xFF0000;
+          lv_obj_set_style_bg_color(id(btn_settings), lv_color_hex(btn_color), LV_PART_MAIN);
+
+# Expose 4 Template Switch Entities for Seamless Switch Syncing in HA
+switch:
+  - platform: template
+    name: "CYD S1"
+    id: cyd_s1
+    lambda: 'return id(cyd_l1)->remote_values.is_on();'
+    turn_on_action:
+      - light.turn_on: cyd_l1
+    turn_off_action:
+      - light.turn_off: cyd_l1
+  - platform: template
+    name: "CYD S2"
+    id: cyd_s2
+    lambda: 'return id(cyd_l2)->remote_values.is_on();'
+    turn_on_action:
+      - light.turn_on: cyd_l2
+    turn_off_action:
+      - light.turn_off: cyd_l2
+  - platform: template
+    name: "CYD S3"
+    id: cyd_s3
+    lambda: 'return id(cyd_l3)->remote_values.is_on();'
+    turn_on_action:
+      - light.turn_on: cyd_l3
+    turn_off_action:
+      - light.turn_off: cyd_l3
+  - platform: template
+    name: "CYD S4"
+    id: cyd_s4
+    lambda: 'return id(cyd_l4)->remote_values.is_on();'
+    turn_on_action:
+      - light.turn_on: cyd_l4
+    turn_off_action:
+      - light.turn_off: cyd_l4
+
+# Top-level Restart Button to allow programmatic reboots
+button:
+  - platform: restart
+    id: esp_restart_button
+    name: "CYD Restart"
