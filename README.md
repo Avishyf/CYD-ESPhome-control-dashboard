@@ -1,6 +1,7 @@
 # Cheap Yellow Display (CYD) ESPHome Lights Controller
 
 [![Device](https://img.shields.io/badge/Hardware-ESP32--2432S028-yellow.svg)](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
+[![Device](https://img.shields.io/badge/Hardware-ESP32--3248S035C-yellow.svg)](https://s.click.aliexpress.com/e/_c43RyIut)
 [![Framework](https://img.shields.io/badge/Framework-ESPHome-green.svg)](https://esphome.io/)
 [![Platform](https://img.shields.io/badge/Integration-Home%20Assistant-blue.svg)](https://www.home-assistant.io/)
 
@@ -11,11 +12,19 @@
 A state-of-the-art, premium touch-based control panel for your Home Assistant lights and switches. This project runs natively on the **Cheap Yellow Display (CYD / `esp32-2432S028`)**, leveraging the advanced hardware features of the ESP32 and ESPHome's declarative LVGL graphics component.
 
 ### ⚙️ Hardware Specifications:
+
+[![Device](https://img.shields.io/badge/Hardware-ESP32--2432S028-yellow.svg)](https://s.click.aliexpress.com/e/_c43RyIut)
 * **Controller**: Espressif ESP32
 * **Display**: 320x240 ILI9341 display
 * **Touch Panel**: XPT2046 Resistive Touch Panel
-* **Ambient Light**: Onboard LDR (Light Dependent Resistor)
 
+/
+
+[![Device](https://img.shields.io/badge/Hardware-ESP32--3248S035C-yellow.svg)](https://s.click.aliexpress.com/e/_c43RyIut)
+* **Controller**: Espressif ESP32
+* **Display**: 320x480 ST7796 display
+* **Touch Panel**: GT911 Capacitive Touch Panel
+* **Ambient Light**: Onboard LDR (Light Dependent Resistor)
 ---
 
 ## 📸 Dashboard Previews (Simulated Views)
