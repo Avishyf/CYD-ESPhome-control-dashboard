@@ -6,6 +6,7 @@ esphome:
   on_boot:
     priority: -100.0
     then:
+      - script.execute: apply_theme_script
       - light.turn_on:
           id: cyd_backlight
           brightness: 0.8
@@ -58,6 +59,139 @@ esphome:
           set_logo(id(l2_logo), id(l2_logo_label));
           set_logo(id(l3_logo), id(l3_logo_label));
           set_logo(id(l4_logo), id(l4_logo_label));
+
+script:
+  - id: apply_theme_script
+    then:
+      - lambda: |-
+          bool dark = id(dark_mode);
+          uint32_t bg_color = dark ? 0x1A1D20 : 0xF1F5F9;      // Dark bg vs Slate 100
+          uint32_t card_color = dark ? 0x2E3238 : 0xE2E8F0;    // Slate 800 vs Slate 200 (Bright Grey)
+          uint32_t border_color = dark ? 0x3E444D : 0xCBD5E1;  // Slate 700 vs Slate 300
+          
+          uint32_t text_white = dark ? 0xFFFFFF : 0x000000;    // White vs Black
+          uint32_t text_grey = dark ? 0xCBD5E1 : 0x334155;     // Slate 300 vs Slate 700
+          uint32_t text_small = dark ? 0x94A3B8 : 0x475569;    // Slate 400 vs Slate 600
+
+          // Apply to pages
+          if (id(main_page) != nullptr) lv_obj_set_style_bg_color(id(main_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(channel_page) != nullptr) lv_obj_set_style_bg_color(id(channel_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(switch_page) != nullptr) lv_obj_set_style_bg_color(id(switch_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(settings_page) != nullptr) lv_obj_set_style_bg_color(id(settings_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(config_page) != nullptr) lv_obj_set_style_bg_color(id(config_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+          if (id(wifi_hotspot_page) != nullptr) lv_obj_set_style_bg_color(id(wifi_hotspot_page)->obj, lv_color_hex(bg_color), LV_PART_MAIN);
+
+          // Apply to static buttons
+          lv_obj_t* btns[] = {
+            id(btn_settings_back), id(btn_wifi_setup),
+            id(btn_back), id(btn_config_dimmer), id(btn_switch_back), id(btn_config_switch),
+            id(btn_config_back), id(btn_hotspot_back),
+            id(btn_settings),
+            id(btn_mode_dimmer), id(btn_mode_switch),
+            id(btn_logo_1), id(btn_logo_2), id(btn_logo_3), id(btn_logo_4),
+            id(btn_logo_5), id(btn_logo_6), id(btn_logo_7), id(btn_logo_8)
+          };
+          for (auto* btn : btns) {
+            if (btn != nullptr) {
+              lv_obj_set_style_bg_color(btn, lv_color_hex(card_color), LV_PART_MAIN);
+              lv_obj_set_style_border_color(btn, lv_color_hex(border_color), LV_PART_MAIN);
+              lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+            }
+          }
+
+          // Apply to card buttons (default states)
+          lv_obj_t* cards[] = { id(btn_l1), id(btn_l2), id(btn_l3), id(btn_l4) };
+          for (auto* card : cards) {
+            if (card != nullptr) {
+              lv_obj_set_style_bg_color(card, lv_color_hex(card_color), LV_PART_MAIN);
+              lv_obj_set_style_border_color(card, lv_color_hex(border_color), LV_PART_MAIN);
+              lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+            }
+          }
+
+          // Helper to style child labels of buttons
+          auto set_button_label_colors = [](lv_obj_t* parent, uint32_t color) {
+            if (parent == nullptr) return;
+            uint32_t child_cnt = lv_obj_get_child_cnt(parent);
+            for (uint32_t i = 0; i < child_cnt; i++) {
+              lv_obj_t* child = lv_obj_get_child(parent, i);
+              if (child != nullptr && lv_obj_check_type(child, &lv_label_class)) {
+                lv_obj_set_style_text_color(child, lv_color_hex(color), LV_PART_MAIN);
+              }
+            }
+          };
+
+          // Apply button text colors
+          lv_obj_t* text_btns[] = {
+            id(btn_settings_back), id(btn_wifi_setup),
+            id(btn_back), id(btn_config_dimmer), id(btn_switch_back), id(btn_config_switch),
+            id(btn_config_back), id(btn_hotspot_back),
+            id(btn_mode_dimmer), id(btn_mode_switch)
+          };
+          for (auto* btn : text_btns) {
+            set_button_label_colors(btn, text_small);
+          }
+
+          // Apply to white text labels
+          lv_obj_t* white_labels[] = {
+            id(l1_name_label), id(l2_name_label), id(l3_name_label), id(l4_name_label),
+            id(channel_title), id(switch_title), id(config_title), id(settings_title), id(wifi_hotspot_title)
+          };
+          for (auto* lbl : white_labels) {
+            if (lbl != nullptr) {
+              lv_obj_set_style_text_color(lbl, lv_color_hex(text_white), LV_PART_MAIN);
+            }
+          }
+
+          // Apply to grey text labels
+          lv_obj_t* grey_labels[] = {
+            id(settings_ssid_label), id(settings_ip_label), id(settings_wifi_signal_label), id(settings_theme_label),
+            id(brightness_label), id(tone_label), id(backlight_label), id(timeout_label),
+            id(config_mode_label), id(config_logo_label), id(switch_toggle_label), id(hotspot_instructions_label)
+          };
+          for (auto* lbl : grey_labels) {
+            if (lbl != nullptr) {
+              lv_obj_set_style_text_color(lbl, lv_color_hex(text_grey), LV_PART_MAIN);
+            }
+          }
+
+          // Apply to small / card status labels
+          lv_obj_t* small_labels[] = {
+            id(l1_status_label), id(l2_status_label), id(l3_status_label), id(l4_status_label)
+          };
+          for (auto* lbl : small_labels) {
+            if (lbl != nullptr) {
+              lv_obj_set_style_text_color(lbl, lv_color_hex(text_small), LV_PART_MAIN);
+            }
+          }
+
+          // Theme Toggle - animate thumb slide
+          if (id(btn_theme_toggle_vertical) != nullptr) {
+            uint32_t track_bg     = dark ? 0x2A2D32 : 0x1E88E5;
+            uint32_t track_border = dark ? 0x3E444D : 0x1565C0;
+            lv_obj_set_style_bg_color(id(btn_theme_toggle_vertical), lv_color_hex(track_bg), LV_PART_MAIN);
+            lv_obj_set_style_border_color(id(btn_theme_toggle_vertical), lv_color_hex(track_border), LV_PART_MAIN);
+          }
+
+          if (id(theme_toggle_thumb) != nullptr) {
+            uint32_t thumb_bg = dark ? 0x4A5060 : 0xFFFFFF;
+            lv_obj_set_style_bg_color(id(theme_toggle_thumb), lv_color_hex(thumb_bg), LV_PART_MAIN);
+
+            // Smooth slide animation
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, id(theme_toggle_thumb));
+            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t) lv_obj_set_x);
+            lv_anim_set_values(&a, lv_obj_get_x(id(theme_toggle_thumb)), dark ? 42 : 4);
+            lv_anim_set_time(&a, 250);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+            lv_anim_start(&a);
+          }
+
+          if (id(theme_toggle_icon) != nullptr) {
+            lv_label_set_text(id(theme_toggle_icon), dark ? "\U000F0594" : "\U000F05A8");
+            lv_obj_set_style_text_color(id(theme_toggle_icon), lv_color_hex(dark ? 0xB0BAC6 : 0xFFEB3B), LV_PART_MAIN);
+          }
 
 # Configure robust preference saving to flash within 10s of any changes
 preferences:
@@ -119,6 +253,8 @@ font:
       - "\U000F0210" # fan
       - "\U000F001B" # air-conditioner
       - "\U000F02E3" # bed
+      - "\U000F05A8" # weather-sunny (Sun)
+      - "\U000F0594" # weather-night (Moon)
   - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf"
     id: font_icon_large
     size: 58
@@ -153,10 +289,10 @@ display:
     dc_pin: GPIO2
     auto_clear_enabled: false
     invert_colors: false
-    rotation: 180
+    rotation: 90
     dimensions:
-      width: 320
-      height: 240
+      width: 240
+      height: 320
     update_interval: never
 
 # Touchscreen Controller (XPT2046)
@@ -244,14 +380,8 @@ output:
     type: float
     write_action: []
 
-# Premium Upgrades: Onboard LDR Sensor & WiFi Signal Sensor
+# WiFi Signal Sensor
 sensor:
-  - platform: adc
-    pin: GPIO34
-    name: "CYD Ambient Light"
-    id: ambient_light
-    update_interval: 10s
-    attenuation: 12db
   - platform: wifi_signal
     name: "CYD WiFi Signal"
     id: cyd_wifi_signal
@@ -315,6 +445,10 @@ text_sensor:
 
 # Active Channel Trackers
 globals:
+  - id: dark_mode
+    type: bool
+    initial_value: 'true'
+    restore_value: yes
   - id: active_channel
     type: int
     initial_value: '1'
@@ -493,7 +627,7 @@ light:
             id(l1_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l1), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
-            lv_obj_set_style_bg_color(id(btn_l1), lv_color_hex(0x2E3238), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(id(btn_l1), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
           }
 
           // Dynamic Logo glyph and color update
@@ -510,7 +644,7 @@ light:
           lv_label_set_text(id(l1_logo_label), glyph);
 
           if (light->remote_values.is_on()) {
-            if (logo >= 1 && logo <= 4) {
+            if (id(l1_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
               float pct = (ct - 153.0f) / (500.0f - 153.0f);
               pct = std::max(0.0f, std::min(1.0f, pct));
@@ -537,7 +671,7 @@ light:
             if (light->remote_values.is_on()) {
               lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-              if (logo >= 1 && logo <= 4) {
+              if (id(l1_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
                 float pct = (ct - 153.0f) / (500.0f - 153.0f);
                 pct = std::max(0.0f, std::min(1.0f, pct));
@@ -555,7 +689,7 @@ light:
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
             } else {
-              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "INACTIVE");
               lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
             }
@@ -616,7 +750,7 @@ light:
             id(l2_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l2), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
-            lv_obj_set_style_bg_color(id(btn_l2), lv_color_hex(0x2E3238), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(id(btn_l2), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
           }
 
           // Dynamic Logo glyph and color update
@@ -633,7 +767,7 @@ light:
           lv_label_set_text(id(l2_logo_label), glyph);
 
           if (light->remote_values.is_on()) {
-            if (logo >= 1 && logo <= 4) {
+            if (id(l2_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
               float pct = (ct - 153.0f) / (500.0f - 153.0f);
               pct = std::max(0.0f, std::min(1.0f, pct));
@@ -660,7 +794,7 @@ light:
             if (light->remote_values.is_on()) {
               lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-              if (logo >= 1 && logo <= 4) {
+              if (id(l2_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
                 float pct = (ct - 153.0f) / (500.0f - 153.0f);
                 pct = std::max(0.0f, std::min(1.0f, pct));
@@ -678,7 +812,7 @@ light:
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
             } else {
-              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "INACTIVE");
               lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
             }
@@ -739,7 +873,7 @@ light:
             id(l3_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l3), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
-            lv_obj_set_style_bg_color(id(btn_l3), lv_color_hex(0x2E3238), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(id(btn_l3), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
           }
 
           // Dynamic Logo glyph and color update
@@ -756,7 +890,7 @@ light:
           lv_label_set_text(id(l3_logo_label), glyph);
 
           if (light->remote_values.is_on()) {
-            if (logo >= 1 && logo <= 4) {
+            if (id(l3_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
               float pct = (ct - 153.0f) / (500.0f - 153.0f);
               pct = std::max(0.0f, std::min(1.0f, pct));
@@ -783,7 +917,7 @@ light:
             if (light->remote_values.is_on()) {
               lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-              if (logo >= 1 && logo <= 4) {
+              if (id(l3_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
                 float pct = (ct - 153.0f) / (500.0f - 153.0f);
                 pct = std::max(0.0f, std::min(1.0f, pct));
@@ -801,7 +935,7 @@ light:
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
             } else {
-              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "INACTIVE");
               lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
             }
@@ -862,7 +996,7 @@ light:
             id(l4_saved_color_temp) = light->remote_values.get_color_temperature();
             lv_obj_set_style_bg_color(id(btn_l4), lv_color_hex(0x2C4022), LV_PART_MAIN);
           } else {
-            lv_obj_set_style_bg_color(id(btn_l4), lv_color_hex(0x2E3238), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(id(btn_l4), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
           }
 
           // Dynamic Logo glyph and color update
@@ -879,7 +1013,7 @@ light:
           lv_label_set_text(id(l4_logo_label), glyph);
 
           if (light->remote_values.is_on()) {
-            if (logo >= 1 && logo <= 4) {
+            if (id(l4_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
               float pct = (ct - 153.0f) / (500.0f - 153.0f);
               pct = std::max(0.0f, std::min(1.0f, pct));
@@ -906,7 +1040,7 @@ light:
             if (light->remote_values.is_on()) {
               lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-              if (logo >= 1 && logo <= 4) {
+              if (id(l4_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
                 float pct = (ct - 153.0f) / (500.0f - 153.0f);
                 pct = std::max(0.0f, std::min(1.0f, pct));
@@ -924,7 +1058,7 @@ light:
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
             } else {
-              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+              lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
               lv_label_set_text(id(switch_toggle_label), "INACTIVE");
               lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
             }
@@ -1044,7 +1178,7 @@ lvgl:
                         if (light->remote_values.is_on()) {
                           lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-                          if (logo >= 1 && logo <= 4) {
+                          if (id(l1_type) == 1) {
                             float ct = light->remote_values.get_color_temperature();
                             float pct = (ct - 153.0f) / (500.0f - 153.0f);
                             pct = std::max(0.0f, std::min(1.0f, pct));
@@ -1062,7 +1196,7 @@ lvgl:
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
                         } else {
-                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "INACTIVE");
                           lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
                         }
@@ -1163,7 +1297,7 @@ lvgl:
                         if (light->remote_values.is_on()) {
                           lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-                          if (logo >= 1 && logo <= 4) {
+                          if (id(l2_type) == 1) {
                             float ct = light->remote_values.get_color_temperature();
                             float pct = (ct - 153.0f) / (500.0f - 153.0f);
                             pct = std::max(0.0f, std::min(1.0f, pct));
@@ -1181,7 +1315,7 @@ lvgl:
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
                         } else {
-                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "INACTIVE");
                           lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
                         }
@@ -1281,7 +1415,7 @@ lvgl:
                         if (light->remote_values.is_on()) {
                           lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-                          if (logo >= 1 && logo <= 4) {
+                          if (id(l3_type) == 1) {
                             float ct = light->remote_values.get_color_temperature();
                             float pct = (ct - 153.0f) / (500.0f - 153.0f);
                             pct = std::max(0.0f, std::min(1.0f, pct));
@@ -1299,7 +1433,7 @@ lvgl:
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
                         } else {
-                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "INACTIVE");
                           lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
                         }
@@ -1399,7 +1533,7 @@ lvgl:
                         if (light->remote_values.is_on()) {
                           lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2C4022), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
-                          if (logo >= 1 && logo <= 4) {
+                          if (id(l4_type) == 1) {
                             float ct = light->remote_values.get_color_temperature();
                             float pct = (ct - 153.0f) / (500.0f - 153.0f);
                             pct = std::max(0.0f, std::min(1.0f, pct));
@@ -1417,7 +1551,7 @@ lvgl:
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
                         } else {
-                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex(0x2E3238), LV_PART_MAIN);
+                          lv_obj_set_style_bg_color(id(btn_switch_toggle), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                           lv_label_set_text(id(switch_toggle_label), "INACTIVE");
                           lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x64748B), LV_PART_MAIN);
                         }
@@ -1557,7 +1691,7 @@ lvgl:
 
                   // Highlight active modes and logos
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
 
@@ -1582,6 +1716,7 @@ lvgl:
 
         # Brightness Section
         - label:
+            id: brightness_label
             text: "Brightness"
             x: 50
             y: 60
@@ -1625,6 +1760,7 @@ lvgl:
 
         # Tone / Color Temp Section
         - label:
+            id: tone_label
             text: "Color Temperature (Tone)"
             x: 50
             y: 140
@@ -1737,7 +1873,7 @@ lvgl:
 
                   // Highlight active modes and logos
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
 
@@ -1838,6 +1974,7 @@ lvgl:
 
         # Channel Mode Section Label
         - label:
+            id: config_mode_label
             text: "Channel Mode"
             x: 20
             y: 55
@@ -1866,7 +2003,7 @@ lvgl:
                   // Update button highlights
                   lv_obj_set_style_bg_color(id(btn_mode_dimmer), lv_color_hex(0x4A6984), LV_PART_MAIN);
                   lv_obj_set_style_border_color(id(btn_mode_dimmer), lv_color_hex(0x6080A0), LV_PART_MAIN);
-                  lv_obj_set_style_bg_color(id(btn_mode_switch), lv_color_hex(0x2E3238), LV_PART_MAIN);
+                  lv_obj_set_style_bg_color(id(btn_mode_switch), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                   lv_obj_set_style_border_color(id(btn_mode_switch), lv_color_hex(0x3E444D), LV_PART_MAIN);
             widgets:
               - label:
@@ -1897,7 +2034,7 @@ lvgl:
                   // Update button highlights
                   lv_obj_set_style_bg_color(id(btn_mode_switch), lv_color_hex(0x4A6984), LV_PART_MAIN);
                   lv_obj_set_style_border_color(id(btn_mode_switch), lv_color_hex(0x6080A0), LV_PART_MAIN);
-                  lv_obj_set_style_bg_color(id(btn_mode_dimmer), lv_color_hex(0x2E3238), LV_PART_MAIN);
+                  lv_obj_set_style_bg_color(id(btn_mode_dimmer), lv_color_hex((id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                   lv_obj_set_style_border_color(id(btn_mode_dimmer), lv_color_hex(0x3E444D), LV_PART_MAIN);
             widgets:
               - label:
@@ -1908,6 +2045,7 @@ lvgl:
 
         # Logo Section Label
         - label:
+            id: config_logo_label
             text: "Logo"
             align: TOP_MID
             y: 125
@@ -1935,7 +2073,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -1974,7 +2112,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -2013,7 +2151,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -2052,7 +2190,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -2091,7 +2229,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -2130,7 +2268,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -2169,7 +2307,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -2208,7 +2346,7 @@ lvgl:
                   else if (ch == 4) { id(l4_logo) = clicked; id(cyd_l4)->publish_state(); }
 
                   auto set_btn_active = [](lv_obj_t* btn, bool active) {
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : 0x2E3238), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(btn, lv_color_hex(active ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
                     lv_obj_set_style_border_color(btn, lv_color_hex(active ? 0x6080A0 : 0x3E444D), LV_PART_MAIN);
                   };
                   set_btn_active(id(btn_logo_1), clicked == 1);
@@ -2232,6 +2370,7 @@ lvgl:
       widgets:
         # Title
         - label:
+            id: settings_title
             text: "Settings"
             x: 85
             y: 15
@@ -2303,6 +2442,52 @@ lvgl:
             styles:
               - style_normal_text
 
+        # Theme Label
+        - label:
+            id: settings_theme_label
+            text: "Theme:"
+            x: 170
+            y: 83
+            styles:
+              - style_normal_text
+
+        # Theme Toggle - pill track (plain obj to avoid button padding/press-state)
+        - obj:
+            id: btn_theme_toggle_vertical
+            x: 235
+            y: 76
+            width: 76
+            height: 36
+            radius: 18
+            border_width: 1
+            border_color: 0x1565C0
+            bg_color: 0x1E88E5
+            pad_all: 0
+            on_click:
+              - lambda: |-
+                  id(dark_mode) = !id(dark_mode);
+              - script.execute: apply_theme_script
+            widgets:
+              # Thumb circle - positioned at left initially (bright mode)
+              - obj:
+                  id: theme_toggle_thumb
+                  x: 4
+                  y: 3
+                  width: 30
+                  height: 30
+                  radius: 15
+                  bg_color: 0xFFFFFF
+                  border_width: 0
+                  pad_all: 0
+                  clickable: false
+                  widgets:
+                    - label:
+                        id: theme_toggle_icon
+                        text: "\U000F05A8"
+                        align: CENTER
+                        styles:
+                          - style_icon
+
         # WiFi Signal Strength Label
         - label:
             id: settings_wifi_signal_label
@@ -2312,14 +2497,6 @@ lvgl:
             styles:
               - style_normal_text
 
-        # LDR Sensor Info
-        - label:
-            id: settings_ldr_label
-            text: "Ambient: 0.00V"
-            x: 170
-            y: 75
-            styles:
-              - style_normal_text
 
         # WiFi Signal Multi-Height Solid Bars
         - obj:
@@ -2405,6 +2582,7 @@ lvgl:
 
         # Manual Backlight Override
         - label:
+            id: backlight_label
             text: "Display Backlight"
             x: 50
             y: 160
@@ -2437,6 +2615,7 @@ lvgl:
       bg_color: 0x1A1D20
       widgets:
         - label:
+            id: wifi_hotspot_title
             text: "WiFi Setup Hotspot"
             x: 95
             y: 15
@@ -2467,6 +2646,7 @@ lvgl:
 
         # Instructions Label
         - label:
+            id: hotspot_instructions_label
             text: "1. Connect your phone/PC to WiFi:\n   SSID: CYD-Remote-AP\n   Password: password123\n\n2. Open your web browser to:\n   http://192.168.4.1\n\n3. Select your network & connect!"
             x: 20
             y: 65
@@ -2506,13 +2686,10 @@ interval:
       - lvgl.label.update:
           id: settings_ssid_label
           text: !lambda 'return "SSID: " + id(cyd_ssid).state;'
-      - lvgl.label.update:
-          id: settings_ldr_label
-          text: !lambda 'return str_sprintf("Ambient: %.2fV", id(ambient_light).state);'
       - lambda: |-
           float rssi = id(cyd_wifi_signal).state;
-          uint32_t active_color = 0x4A6984;
-          uint32_t inactive_color = 0x2E3238;
+          uint32_t active_color = id(dark_mode) ? 0x4A6984 : 0x22C55E;    // Slate Blue vs Bright Green
+          uint32_t inactive_color = id(dark_mode) ? 0x2E3238 : 0xE2E8F0;  // Dark grey vs Bright grey
           int bars = 0;
           if (!std::isnan(rssi) && rssi != 0.0f && rssi > -100.0f) {
             if (rssi >= -55.0f) bars = 4;
@@ -2526,7 +2703,7 @@ interval:
           lv_obj_set_style_bg_color(id(wifi_bar_4), lv_color_hex(bars >= 4 ? active_color : inactive_color), LV_PART_MAIN);
           
           bool is_connected = wifi::global_wifi_component->is_connected();
-          uint32_t btn_color = is_connected ? 0x4A6984 : 0x0000FF;
+          uint32_t btn_color = is_connected ? (id(dark_mode) ? 0x4A6984 : 0x22C55E) : 0xFF0000;
           lv_obj_set_style_bg_color(id(btn_settings), lv_color_hex(btn_color), LV_PART_MAIN);
 
 # Expose 4 Template Switch Entities for Seamless Switch Syncing in HA
