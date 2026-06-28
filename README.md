@@ -5,7 +5,7 @@
 [![Platform](https://img.shields.io/badge/Integration-Home%20Assistant-blue.svg)](https://www.home-assistant.io/)
 
 <p align="center">
-  <img src="operational1.jpeg" width="380" alt="CYD ESPHome Lights Controller Operational" />
+  <img src="/image/operational1.jpeg" width="380" alt="CYD ESPHome Lights Controller Operational" />
 </p>
 
 A state-of-the-art, premium touch-based control panel for your Home Assistant lights and switches. This project runs natively on the **Cheap Yellow Display (CYD / `esp32-2432S028`)**, leveraging the advanced hardware features of the ESP32 and ESPHome's declarative LVGL graphics component.
