@@ -24,7 +24,7 @@ To save space and keep your GitHub page clean, screenshots are resized to a cris
 
 | Home Screen Dashboard | Dimmer Sub-Page | Channel Configuration | Settings Menu |
 | :---: | :---: | :---: | :---: |
-| <img src="main_page.png" width="180" alt="Home Screen Dashboard" /> | <img src="/light_control.png" width="180" alt="Dimmer Sub-Page" /> | <img src="channel_configuration.png" width="180" alt="Channel Configuration" /> | <img src="settings.png" width="180" alt="Settings Menu" /> |
+| <img src="image/main_page.png" width="180" alt="Home Screen Dashboard" /> | <img src="image/light_control.png" width="180" alt="Dimmer Sub-Page" /> | <img src="image/channel_configuration.png" width="180" alt="Channel Configuration" /> | <img src="image/settings.png" width="180" alt="Settings Menu" /> |
 
 ---
 
