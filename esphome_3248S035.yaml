@@ -6,6 +6,19 @@ esphome:
   on_boot:
     priority: -100.0
     then:
+      - lambda: |-
+          // Apply color order preference (RGB vs BGR) matching the current display rotation
+          uint8_t madctl = 0x00;
+          switch (id(cyd_display).get_rotation()) {
+            case DISPLAY_ROTATION_0_DEGREES:   madctl = 0x40; break;
+            case DISPLAY_ROTATION_90_DEGREES:  madctl = 0x20; break;
+            case DISPLAY_ROTATION_180_DEGREES: madctl = 0x80; break;
+            case DISPLAY_ROTATION_270_DEGREES: madctl = 0xE0; break;
+          }
+          if (!id(color_order_rgb)) {
+            madctl |= 0x08; // Set BGR bit
+          }
+          id(cyd_display).send_command(0x36, &madctl, 1);
       - script.execute: apply_theme_script
       - light.turn_on:
           id: cyd_backlight
@@ -135,7 +148,8 @@ script:
           // Apply to white text labels
           lv_obj_t* white_labels[] = {
             id(l1_name_label), id(l2_name_label), id(l3_name_label), id(l4_name_label),
-            id(channel_title), id(switch_title), id(config_title), id(settings_title), id(wifi_hotspot_title)
+            id(channel_title), id(switch_title), id(config_title), id(settings_title), id(wifi_hotspot_title),
+            id(settings_time_label)
           };
           for (auto* lbl : white_labels) {
             if (lbl != nullptr) {
@@ -182,7 +196,7 @@ script:
             lv_anim_init(&a);
             lv_anim_set_var(&a, id(theme_toggle_thumb));
             lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t) lv_obj_set_x);
-            lv_anim_set_values(&a, lv_obj_get_x(id(theme_toggle_thumb)), dark ? 42 : 4);
+            lv_anim_set_values(&a, lv_obj_get_x(id(theme_toggle_thumb)), dark ? 42 : 2);
             lv_anim_set_time(&a, 250);
             lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
             lv_anim_start(&a);
@@ -191,6 +205,11 @@ script:
           if (id(theme_toggle_icon) != nullptr) {
             lv_label_set_text(id(theme_toggle_icon), dark ? "\U000F0594" : "\U000F05A8");
             lv_obj_set_style_text_color(id(theme_toggle_icon), lv_color_hex(dark ? 0xB0BAC6 : 0xFFEB3B), LV_PART_MAIN);
+          }
+
+          if (id(btn_color_swap) != nullptr) {
+            lv_obj_set_style_bg_color(id(btn_color_swap), lv_color_hex(id(color_order_rgb) ? 0x4A6984 : (dark ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+            lv_obj_set_style_border_color(id(btn_color_swap), lv_color_hex(dark ? 0x3E444D : 0xCBD5E1), LV_PART_MAIN);
           }
 
 # Configure robust preference saving to flash within 10s of any changes
@@ -298,10 +317,10 @@ display:
     auto_clear_enabled: false
     invert_colors: false
     color_order: bgr
-    rotation: 90 # Set to 90 or 270 for landscape (depends on physical mounting)
+    rotation: 180 # Set to 90 or 270 for landscape (depends on physical mounting)
     dimensions:
-      width: 320
-      height: 480
+      width: 480
+      height: 320
     update_interval: never
 
 # Touchscreen Controller (GT911)
@@ -450,6 +469,9 @@ text_sensor:
 
 # Active Channel Trackers
 globals:
+  - id: get_temp_color
+    type: 'uint32_t(*)(float)'
+    initial_value: '[](float ct) -> uint32_t { float pct = (ct - 153.0f) / (500.0f - 153.0f); pct = std::max(0.0f, std::min(1.0f, pct)); int r, g, b; if (pct <= 0.5f) { float p = pct * 2.0f; r = int(p * 255); g = 255; b = 255; } else { float p = (pct - 0.5f) * 2.0f; r = 255; g = int(255 - p * 140); b = int(255 - p * 255); } return (r << 16) | (g << 8) | b; }'
   - id: dark_mode
     type: bool
     initial_value: 'true'
@@ -521,7 +543,11 @@ globals:
     restore_value: yes
   - id: screen_timeout_s
     type: int
-    initial_value: '60'
+    initial_value: '15'
+    restore_value: yes
+  - id: color_order_rgb
+    type: bool
+    initial_value: 'false'
     restore_value: yes
 
   # Explicit Non-Volatile Memory for Brightness and Color Temperature
@@ -567,6 +593,14 @@ light:
     id: cyd_backlight
     restore_mode: ALWAYS_ON
     default_transition_length: 0s
+    on_turn_on:
+      - lambda: |-
+          setCpuFrequencyMhz(240);
+          esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    on_turn_off:
+      - lambda: |-
+          setCpuFrequencyMhz(80);
+          esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
 
   # Status RGB LED on the back
   - platform: rgb
@@ -604,18 +638,7 @@ light:
                   return id(cyd_l1)->remote_values.get_color_temperature();
             - lambda: |-
                 float ct = id(cyd_l1)->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
       - lvgl.label.update:
           id: l1_status_label
           text: !lambda |-
@@ -651,18 +674,7 @@ light:
           if (light->remote_values.is_on()) {
             if (id(l1_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
-              float pct = (ct - 153.0f) / (500.0f - 153.0f);
-              pct = std::max(0.0f, std::min(1.0f, pct));
-              int r, g, b;
-              if (pct <= 0.5f) {
-                float p = pct * 2.0f;
-                r = int(p * 255); g = 255; b = 255;
-              } else {
-                float p = (pct - 0.5f) * 2.0f;
-                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-              }
-              uint32_t color = (b << 16) | (g << 8) | r;
-              lv_obj_set_style_text_color(id(l1_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              lv_obj_set_style_text_color(id(l1_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
             } else {
               lv_obj_set_style_text_color(id(l1_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
             }
@@ -678,18 +690,7 @@ light:
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
               if (id(l1_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               } else {
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
@@ -727,18 +728,7 @@ light:
                   return id(cyd_l2)->remote_values.get_color_temperature();
             - lambda: |-
                 float ct = id(cyd_l2)->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
       - lvgl.label.update:
           id: l2_status_label
           text: !lambda |-
@@ -774,18 +764,7 @@ light:
           if (light->remote_values.is_on()) {
             if (id(l2_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
-              float pct = (ct - 153.0f) / (500.0f - 153.0f);
-              pct = std::max(0.0f, std::min(1.0f, pct));
-              int r, g, b;
-              if (pct <= 0.5f) {
-                float p = pct * 2.0f;
-                r = int(p * 255); g = 255; b = 255;
-              } else {
-                float p = (pct - 0.5f) * 2.0f;
-                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-              }
-              uint32_t color = (b << 16) | (g << 8) | r;
-              lv_obj_set_style_text_color(id(l2_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              lv_obj_set_style_text_color(id(l2_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
             } else {
               lv_obj_set_style_text_color(id(l2_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
             }
@@ -801,18 +780,7 @@ light:
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
               if (id(l2_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               } else {
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
@@ -850,18 +818,7 @@ light:
                   return id(cyd_l3)->remote_values.get_color_temperature();
             - lambda: |-
                 float ct = id(cyd_l3)->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
       - lvgl.label.update:
           id: l3_status_label
           text: !lambda |-
@@ -897,18 +854,7 @@ light:
           if (light->remote_values.is_on()) {
             if (id(l3_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
-              float pct = (ct - 153.0f) / (500.0f - 153.0f);
-              pct = std::max(0.0f, std::min(1.0f, pct));
-              int r, g, b;
-              if (pct <= 0.5f) {
-                float p = pct * 2.0f;
-                r = int(p * 255); g = 255; b = 255;
-              } else {
-                float p = (pct - 0.5f) * 2.0f;
-                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-              }
-              uint32_t color = (b << 16) | (g << 8) | r;
-              lv_obj_set_style_text_color(id(l3_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              lv_obj_set_style_text_color(id(l3_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
             } else {
               lv_obj_set_style_text_color(id(l3_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
             }
@@ -924,18 +870,7 @@ light:
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
               if (id(l3_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               } else {
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
@@ -973,18 +908,7 @@ light:
                   return id(cyd_l4)->remote_values.get_color_temperature();
             - lambda: |-
                 float ct = id(cyd_l4)->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
       - lvgl.label.update:
           id: l4_status_label
           text: !lambda |-
@@ -1020,18 +944,7 @@ light:
           if (light->remote_values.is_on()) {
             if (id(l4_type) == 1) {
               float ct = light->remote_values.get_color_temperature();
-              float pct = (ct - 153.0f) / (500.0f - 153.0f);
-              pct = std::max(0.0f, std::min(1.0f, pct));
-              int r, g, b;
-              if (pct <= 0.5f) {
-                float p = pct * 2.0f;
-                r = int(p * 255); g = 255; b = 255;
-              } else {
-                float p = (pct - 0.5f) * 2.0f;
-                r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-              }
-              uint32_t color = (b << 16) | (g << 8) | r;
-              lv_obj_set_style_text_color(id(l4_logo_label), lv_color_hex(color), LV_PART_MAIN);
+              lv_obj_set_style_text_color(id(l4_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
             } else {
               lv_obj_set_style_text_color(id(l4_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN); // Green
             }
@@ -1047,18 +960,7 @@ light:
               lv_label_set_text(id(switch_toggle_label), "ACTIVE");
               if (id(l4_type) == 1) {
                 float ct = light->remote_values.get_color_temperature();
-                float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                pct = std::max(0.0f, std::min(1.0f, pct));
-                int r, g, b;
-                if (pct <= 0.5f) {
-                  float p = pct * 2.0f;
-                  r = int(p * 255); g = 255; b = 255;
-                } else {
-                  float p = (pct - 0.5f) * 2.0f;
-                  r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                }
-                uint32_t color = (b << 16) | (g << 8) | r;
-                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               } else {
                 lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
               }
@@ -1135,18 +1037,7 @@ lvgl:
                   id(l1_long_pressed) = true;
                   id(active_channel) = 1;
                   float ct = id(cyd_l1)->remote_values.get_color_temperature();
-                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                  pct = std::max(0.0f, std::min(1.0f, pct));
-                  int r, g, b;
-                  if (pct <= 0.5f) {
-                    float p = pct * 2.0f;
-                    r = int(p * 255); g = 255; b = 255;
-                  } else {
-                    float p = (pct - 0.5f) * 2.0f;
-                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                  }
-                  uint32_t color = (b << 16) | (g << 8) | r;
-                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               - lvgl.label.update:
                   id: channel_title
                   text: !lambda |-
@@ -1188,18 +1079,7 @@ lvgl:
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
                           if (logo >= 1 && logo <= 4) {
                             float ct = light->remote_values.get_color_temperature();
-                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                            pct = std::max(0.0f, std::min(1.0f, pct));
-                            int r, g, b;
-                            if (pct <= 0.5f) {
-                              float p = pct * 2.0f;
-                              r = int(p * 255); g = 255; b = 255;
-                            } else {
-                              float p = (pct - 0.5f) * 2.0f;
-                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                            }
-                            uint32_t color = (b << 16) | (g << 8) | r;
-                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
                           } else {
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
@@ -1253,18 +1133,7 @@ lvgl:
                   id(l2_long_pressed) = true;
                   id(active_channel) = 2;
                   float ct = id(cyd_l2)->remote_values.get_color_temperature();
-                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                  pct = std::max(0.0f, std::min(1.0f, pct));
-                  int r, g, b;
-                  if (pct <= 0.5f) {
-                    float p = pct * 2.0f;
-                    r = int(p * 255); g = 255; b = 255;
-                  } else {
-                    float p = (pct - 0.5f) * 2.0f;
-                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                  }
-                  uint32_t color = (b << 16) | (g << 8) | r;
-                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               - lvgl.label.update:
                   id: channel_title
                   text: !lambda |-
@@ -1306,18 +1175,7 @@ lvgl:
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
                           if (logo >= 1 && logo <= 4) {
                             float ct = light->remote_values.get_color_temperature();
-                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                            pct = std::max(0.0f, std::min(1.0f, pct));
-                            int r, g, b;
-                            if (pct <= 0.5f) {
-                              float p = pct * 2.0f;
-                              r = int(p * 255); g = 255; b = 255;
-                            } else {
-                              float p = (pct - 0.5f) * 2.0f;
-                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                            }
-                            uint32_t color = (b << 16) | (g << 8) | r;
-                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
                           } else {
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
@@ -1371,18 +1229,7 @@ lvgl:
                   id(l3_long_pressed) = true;
                   id(active_channel) = 3;
                   float ct = id(cyd_l3)->remote_values.get_color_temperature();
-                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                  pct = std::max(0.0f, std::min(1.0f, pct));
-                  int r, g, b;
-                  if (pct <= 0.5f) {
-                    float p = pct * 2.0f;
-                    r = int(p * 255); g = 255; b = 255;
-                  } else {
-                    float p = (pct - 0.5f) * 2.0f;
-                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                  }
-                  uint32_t color = (b << 16) | (g << 8) | r;
-                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               - lvgl.label.update:
                   id: channel_title
                   text: !lambda |-
@@ -1424,18 +1271,7 @@ lvgl:
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
                           if (logo >= 1 && logo <= 4) {
                             float ct = light->remote_values.get_color_temperature();
-                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                            pct = std::max(0.0f, std::min(1.0f, pct));
-                            int r, g, b;
-                            if (pct <= 0.5f) {
-                              float p = pct * 2.0f;
-                              r = int(p * 255); g = 255; b = 255;
-                            } else {
-                              float p = (pct - 0.5f) * 2.0f;
-                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                            }
-                            uint32_t color = (b << 16) | (g << 8) | r;
-                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
                           } else {
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
@@ -1489,18 +1325,7 @@ lvgl:
                   id(l4_long_pressed) = true;
                   id(active_channel) = 4;
                   float ct = id(cyd_l4)->remote_values.get_color_temperature();
-                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                  pct = std::max(0.0f, std::min(1.0f, pct));
-                  int r, g, b;
-                  if (pct <= 0.5f) {
-                    float p = pct * 2.0f;
-                    r = int(p * 255); g = 255; b = 255;
-                  } else {
-                    float p = (pct - 0.5f) * 2.0f;
-                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                  }
-                  uint32_t color = (b << 16) | (g << 8) | r;
-                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
               - lvgl.label.update:
                   id: channel_title
                   text: !lambda |-
@@ -1542,18 +1367,7 @@ lvgl:
                           lv_label_set_text(id(switch_toggle_label), "ACTIVE");
                           if (logo >= 1 && logo <= 4) {
                             float ct = light->remote_values.get_color_temperature();
-                            float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                            pct = std::max(0.0f, std::min(1.0f, pct));
-                            int r, g, b;
-                            if (pct <= 0.5f) {
-                              float p = pct * 2.0f;
-                              r = int(p * 255); g = 255; b = 255;
-                            } else {
-                              float p = (pct - 0.5f) * 2.0f;
-                              r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                            }
-                            uint32_t color = (b << 16) | (g << 8) | r;
-                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(color), LV_PART_MAIN);
+                            lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
                           } else {
                             lv_obj_set_style_text_color(id(switch_page_logo_label), lv_color_hex(0x22C55E), LV_PART_MAIN);
                           }
@@ -1600,7 +1414,7 @@ lvgl:
               - lambda: |-
                   // Update screen timeout slider and label using step index mapping
                   int to_val = id(screen_timeout_s);
-                  int idx = 3; // default 1m
+                  int idx = 1; // default 15s
                   if (to_val == 5) idx = 0;
                   else if (to_val == 15) idx = 1;
                   else if (to_val == 30) idx = 2;
@@ -1631,6 +1445,9 @@ lvgl:
                   // Update backlight slider
                   float bl = id(cyd_backlight)->remote_values.get_brightness();
                   lv_slider_set_value(id(backlight_override_slider), int(bl * 100.0f), LV_ANIM_OFF);
+
+                  // Initialize color swap button color
+                  lv_obj_set_style_bg_color(id(btn_color_swap), lv_color_hex(id(color_order_rgb) ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
               - lvgl.page.show: settings_page
             widgets:
               - label:
@@ -1795,18 +1612,7 @@ lvgl:
             on_value:
               - lambda: |-
                   float ct = x;
-                  float pct = (ct - 153.0f) / (500.0f - 153.0f);
-                  pct = std::max(0.0f, std::min(1.0f, pct));
-                  int r, g, b;
-                  if (pct <= 0.5f) {
-                    float p = pct * 2.0f;
-                    r = int(p * 255); g = 255; b = 255;
-                  } else {
-                    float p = (pct - 0.5f) * 2.0f;
-                    r = 255; g = int(255 - p * 90); b = int(255 - p * 255);
-                  }
-                  uint32_t color = (b << 16) | (g << 8) | r;
-                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(color), LV_PART_MAIN);
+                  lv_obj_set_style_bg_grad_color(id(brightness_slider), lv_color_hex(id(get_temp_color)(ct)), LV_PART_MAIN);
             on_release:
               - lambda: |-
                   int ch = id(active_channel);
@@ -2461,8 +2267,8 @@ lvgl:
               # Thumb circle - positioned at left initially (bright mode)
               - obj:
                   id: theme_toggle_thumb
-                  x: 4
-                  y: 3
+                  x: 2
+                  y: 2
                   width: 30
                   height: 30
                   radius: 15
@@ -2551,7 +2357,7 @@ lvgl:
         # Screen Timeout Section
         - label:
             id: timeout_label
-            text: "Screen Timeout: 1m"
+            text: "Screen Timeout: 15s"
             x: 75
             y: 150
             styles:
@@ -2565,7 +2371,7 @@ lvgl:
             height: 30
             min_value: 0
             max_value: 6
-            value: 3
+            value: 1
             bg_color: 0x141619
             radius: 8
             indicator:
@@ -2617,6 +2423,47 @@ lvgl:
                   call.set_brightness(val);
                   call.set_state(val > 0.0f);
                   call.perform();
+
+        # Color Swap Button (BGR vs RGB)
+        - button:
+            id: btn_color_swap
+            x: 75
+            y: 282
+            width: 140
+            height: 32
+            bg_color: 0x2E3238
+            radius: 8
+            border_width: 1
+            border_color: 0x3E444D
+            on_click:
+              - lambda: |-
+                  id(color_order_rgb) = !id(color_order_rgb);
+                  global_preferences->sync();
+
+                  // Apply color order preference matching the current display rotation
+                  uint8_t madctl = 0x00;
+                  switch (id(cyd_display).get_rotation()) {
+                    case DISPLAY_ROTATION_0_DEGREES:   madctl = 0x40; break;
+                    case DISPLAY_ROTATION_90_DEGREES:  madctl = 0x20; break;
+                    case DISPLAY_ROTATION_180_DEGREES: madctl = 0x80; break;
+                    case DISPLAY_ROTATION_270_DEGREES: madctl = 0xE0; break;
+                  }
+                  if (!id(color_order_rgb)) {
+                    madctl |= 0x08; // Set BGR bit
+                  }
+                  id(cyd_display).send_command(0x36, &madctl, 1);
+
+                  // Invalidate current active screen to redraw colors
+                  lv_obj_invalidate(lv_scr_act());
+
+                  // Update button color
+                  lv_obj_set_style_bg_color(id(btn_color_swap), lv_color_hex(id(color_order_rgb) ? 0x4A6984 : (id(dark_mode) ? 0x2E3238 : 0xE2E8F0)), LV_PART_MAIN);
+            widgets:
+              - label:
+                  text: "SWAP RED/BLUE"
+                  align: CENTER
+                  styles:
+                    - style_small_text
 
     # ------------------- 4. WiFi Hotspot page -------------------
     - id: wifi_hotspot_page
@@ -2711,7 +2558,7 @@ interval:
           lv_obj_set_style_bg_color(id(wifi_bar_4), lv_color_hex(bars >= 4 ? active_color : inactive_color), LV_PART_MAIN);
           
           bool is_connected = wifi::global_wifi_component->is_connected();
-          uint32_t btn_color = is_connected ? (id(dark_mode) ? 0x4A6984 : 0x22C55E) : 0xFF0000;
+          uint32_t btn_color = is_connected ? (id(dark_mode) ? 0x4A6984 : 0xE2E8F0) : 0xFF0000;
           lv_obj_set_style_bg_color(id(btn_settings), lv_color_hex(btn_color), LV_PART_MAIN);
 
 # Expose 4 Template Switch Entities for Seamless Switch Syncing in HA
