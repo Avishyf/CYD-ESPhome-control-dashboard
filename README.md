@@ -15,7 +15,7 @@ A state-of-the-art, premium touch-based control panel for your Home Assistant li
 
 [![Device](https://img.shields.io/badge/Hardware-ESP32--2432S028-yellow.svg)](https://s.click.aliexpress.com/e/_c43RyIut)
 * **Controller**: Espressif ESP32
-* **Display**: 320x240 ILI9341 display
+* **Display**: 320x240 ILI9341 display (or 240*320, make sure what is your device)
 * **Touch Panel**: XPT2046 Resistive Touch Panel
 
 /
